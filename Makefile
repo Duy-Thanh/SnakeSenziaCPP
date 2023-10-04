@@ -17,7 +17,12 @@ CC_VERSION=$(shell $(CC) --version | grep version)
 
 # Directory and File configurations
 ROOT_DIR=$(PWD)
-INCLUDE_DIR=$(ROOT_DIR)
+SFML_ROOT_DIR=$(ROOT_DIR)/SFML
+SFML_SRC_DIR=$(SFML_ROOT_DIR)
+SFML_BUILD_DIR=$(SFML_ROOT_DIR)/build
+SFML_INCLUDE_DIR=$(SFML_ROOT_DIR)/include
+SFML_LIB_DIR=$(SFML_BUILD_DIR)/lib
+INCLUDE_DIR=$(ROOT_DIR) -I$(SFML_INCLUDE_DIR)
 OBJECT_DIR=$(ROOT_DIR)/obj
 BUILD_DIR=$(ROOT_DIR)/build
 DISASM_DIR=$(ROOT_DIR)/disasm
@@ -88,6 +93,8 @@ EXEC_OUTPUT_AARCH64_V83=$(BUILD_DIR_AARCH64_V83)/SnakeSenzia
 BUILD_DIR_UNIVERSAL=$(BUILD_DIR)/universal
 EXEC_OUTPUT_UNIVERSAL=$(BUILD_DIR_UNIVERSAL)/SnakeSenzia
 
+LIBS=-L$(SFML_LIB_DIR) -lsfml-graphics -lsfml-window -lsfml-system
+
 # Compile and Linking configurations
 
 # arch=x86_64
@@ -100,7 +107,7 @@ COMPILER_FLAGS_DISASM_X86_64=-std=c++17 -arch x86_64 -mavx2 -I$(INCLUDE_DIR) \
 OBJDUMP_DISASM_FLAGS_X86_64=-D $(OBJECT_OUTPUT_X86_64) > $(DISASM_OBJDUMP_FILE_X86_64)
 
 LD_FLAGS_X86_64=$(OBJECT_OUTPUT_X86_64) -o $(EXEC_OUTPUT_X86_64) -arch x86_64 \
-			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation
+			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation $(LIBS)
 
 # arch=x86_64h
 COMPILER_FLAGS_X86_64_HASWELL=-std=c++17 -arch x86_64h -mavx2 -I$(INCLUDE_DIR) -c $(SRC_FILE) -o \
@@ -112,19 +119,19 @@ COMPILER_FLAGS_DISASM_X86_64_HASWELL=-std=c++17 -arch x86_64h -mavx2 -I$(INCLUDE
 OBJDUMP_DISASM_FLAGS_X86_64_HASWELL=-D $(OBJECT_OUTPUT_X86_64_HASWELL) >> $(DISASM_OBJDUMP_FILE_X86_64_HASWELL)
 
 LD_FLAGS_X86_64_HASWELL=$(OBJECT_OUTPUT_X86_64_HASWELL) -o $(EXEC_OUTPUT_X86_64_HASWELL) -arch x86_64h \
-			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation
+			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation $(LIBS)
 
 # arch=arm64/aarch64
 COMPILER_FLAGS_AARCH64=-std=c++17 -arch arm64 -I$(INCLUDE_DIR) -c $(SRC_FILE) -o \
 			$(OBJECT_OUTPUT_AARCH64)
 
 COMPILER_FLAGS_DISASM_AARCH64=-std=c++17 -arch arm64 -I$(INCLUDE_DIR) \
-						-S -fverbose-asm $(SRC_FILE) -o $(DISASM_CC_FILE_AARCH64)
+						-S -fverbose-asm $(SRC_FILE) -o $(DISASM_CC_FILE_AARCH64) $(LIBS)
 
 OBJDUMP_DISASM_FLAGS_AARCH64=-D $(EXEC_OUTPUT_AARCH64) > $(DISASM_OBJDUMP_FILE_AARCH64)
 
 LD_FLAGS_AARCH64=$(OBJECT_OUTPUT_AARCH64) -o $(EXEC_OUTPUT_AARCH64) -arch arm64 \
-			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation
+			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation $(LIBS)
 
 # arch=arm64e/aarch64e
 COMPILER_FLAGS_AARCH64_V83=-std=c++17 -arch arm64e -I$(INCLUDE_DIR) -c $(SRC_FILE) -o \
@@ -136,7 +143,7 @@ COMPILER_FLAGS_DISASM_AARCH64_V83=-std=c++17 -arch arm64e -I$(INCLUDE_DIR) \
 OBJDUMP_DISASM_FLAGS_AARCH64_V83=-D $(EXEC_OUTPUT_AARCH64_V83) >> $(DISASM_OBJDUMP_FILE_AARCH64_V83)
 
 LD_FLAGS_AARCH64_V83=$(OBJECT_OUTPUT_AARCH64_V83) -o $(EXEC_OUTPUT_AARCH64_V83) -arch arm64e \
-			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation
+			-lncurses -lstdc++ -framework AudioToolbox -framework CoreFoundation $(LIBS)
 
 # arch=universal
 OBJDUMP_DISASM_FLAGS_UNIVERSAL=-D $(EXEC_OUTPUT_UNIVERSAL) >> $(DISASM_OBJDUMP_FILE_UNIVERSAL)
@@ -152,13 +159,34 @@ always:
 	@mkdir -p $(DISASM_CC_DIR)
 	@mkdir -p $(DISASM_OBJDUMP_DIR)
 
-# x86_64
-x86_64: always
 	@mkdir -p $(OBJECT_DIR_X86_64)
 	@mkdir -p $(BUILD_DIR_X86_64)
 	@mkdir -p $(DISASM_CC_DIR_X86_64)
 	@mkdir -p $(DISASM_OBJDUMP_DIR_X86_64)
 
+	@mkdir -p $(OBJECT_DIR_X86_64_HASWELL)
+	@mkdir -p $(BUILD_DIR_X86_64_HASWELL)
+	@mkdir -p $(DISASM_CC_DIR_X86_64_HASWELL)
+	@mkdir -p $(DISASM_OBJDUMP_DIR_X86_64_HASWELL)
+
+	@mkdir -p $(OBJECT_DIR_AARCH64)
+	@mkdir -p $(BUILD_DIR_AARCH64)
+	@mkdir -p $(DISASM_CC_DIR_AARCH64)
+	@mkdir -p $(DISASM_OBJDUMP_DIR_AARCH64)
+
+	@mkdir -p $(OBJECT_DIR_AARCH64_V83)
+	@mkdir -p $(BUILD_DIR_AARCH64_V83)
+	@mkdir -p $(DISASM_CC_DIR_AARCH64_V83)
+	@mkdir -p $(DISASM_OBJDUMP_DIR_AARCH64_V83)
+
+	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_X86_64))
+	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_X86_64_HASWELL))
+	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_AARCH64))
+	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_AARCH64_V83))
+	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_UNIVERSAL))
+
+# x86_64
+x86_64: always
 	@echo "Building x86_64 executable"
 	@$(CC) $(COMPILER_FLAGS_X86_64)
 	@$(CC) $(COMPILER_FLAGS_DISASM_X86_64)
@@ -167,11 +195,6 @@ x86_64: always
 
 # x86_64 (Intel Haswell and up)
 x86_64h: always
-	@mkdir -p $(OBJECT_DIR_X86_64_HASWELL)
-	@mkdir -p $(BUILD_DIR_X86_64_HASWELL)
-	@mkdir -p $(DISASM_CC_DIR_X86_64_HASWELL)
-	@mkdir -p $(DISASM_OBJDUMP_DIR_X86_64_HASWELL)
-
 	@echo "Building x86_64 (haswell) executable"
 	@$(CC) $(COMPILER_FLAGS_X86_64_HASWELL)
 	@$(CC) $(COMPILER_FLAGS_DISASM_X86_64_HASWELL)
@@ -180,11 +203,6 @@ x86_64h: always
 
 # arm64: Mobile device
 arm64: always
-	@mkdir -p $(OBJECT_DIR_AARCH64)
-	@mkdir -p $(BUILD_DIR_AARCH64)
-	@mkdir -p $(DISASM_CC_DIR_AARCH64)
-	@mkdir -p $(DISASM_OBJDUMP_DIR_AARCH64)
-
 	@echo "Building arm64 executable"
 	@$(CC) $(COMPILER_FLAGS_AARCH64)
 	@$(CC) $(COMPILER_FLAGS_DISASM_AARCH64)
@@ -193,18 +211,13 @@ arm64: always
 
 # arm64e (ARM64v8.3): Apple Silicon and ARMv8.3 architectures
 arm64e: always
-	@mkdir -p $(OBJECT_DIR_AARCH64_V83)
-	@mkdir -p $(BUILD_DIR_AARCH64_V83)
-	@mkdir -p $(DISASM_CC_DIR_AARCH64_V83)
-	@mkdir -p $(DISASM_OBJDUMP_DIR_AARCH64_V83)
-
 	@echo "Building arm64e executable"
 	@$(CC) $(COMPILER_FLAGS_AARCH64_V83)
 	@$(CC) $(COMPILER_FLAGS_DISASM_AARCH64_V83)
 	@$(LD) $(LD_FLAGS_AARCH64_V83)
 	@$(OBJDUMP) $(OBJDUMP_DISASM_FLAGS_AARCH64_V83)
 	
-all: x86_64 x86_64h arm64 arm64e
+all: x86_64 x86_64h arm64
 	@echo "Creating fat executable"
 	@mkdir -p $(BUILD_DIR_UNIVERSAL)
 	@mkdir -p $(DISASM_OBJDUMP_DIR_UNIVERSAL)

@@ -392,7 +392,7 @@ std::string SnakeSenzia::Core::execCommand(const char* cmd) {
 void SnakeSenzia::Core::initialize() {
     context->snake_game_log_system->printLog("CORE", "Snake Senzia (v1.0)");
     context->snake_game_log_system->printLogWString(L"CORE", L"Copyright " + 
-        std::wstring(UNICODE_COPYRIGHT_SYMBOL) + 
+        std::wstring(WCHAR_UNICODE_COPYRIGHT_SYMBOL) + 
         L" 2016 - 2023 CyberDay Studios. All right reserved.");
 
     context->snake_game_log_system->printLog("CORE", 
@@ -415,36 +415,41 @@ void SnakeSenzia::Core::initialize() {
             std::string(context->snake_game_core_filesystem->GetCurrentDirectory()));
     #endif
     #endif
+
+    sf::RenderWindow window(sf::VideoMode(800, 600), "Snake Senzia " + (std::string(context->snake_game_core->execCommand("arch"))));
     
-    #ifdef _WIN32
-        // Setup Windows Terminal
-        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_CURSOR_INFO cursorInfo;
-        GetConsoleCursorInfo(hOut, &cursorInfo);
-        cursorInfo.bVisible = true;                // Hide the cursor
-        SetConsoleCursorInfo(hOut, &cursorInfo);
-    #else
-        // Setup ncurses
-        initscr();
-        cbreak();
-        noecho();
-        keypad(stdscr, TRUE);
-        curs_set(FALSE);
-    #endif
+    // #ifdef _WIN32
+    //     // Setup Windows Terminal
+    //     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    //     CONSOLE_CURSOR_INFO cursorInfo;
+    //     GetConsoleCursorInfo(hOut, &cursorInfo);
+    //     cursorInfo.bVisible = true;                // Hide the cursor
+    //     SetConsoleCursorInfo(hOut, &cursorInfo);
+    // #else
+    //     // Setup ncurses
+    //     initscr();
+    //     start_color();
+    //     init_pair(1, COLOR_YELLOW, COLOR_CYAN);
+    //     cbreak();
+    //     noecho();
+    //     intrflush(stdscr, FALSE);
+    //     keypad(stdscr, TRUE);
+    //     curs_set(FALSE);
+    // #endif
 }
 
 void SnakeSenzia::Core::cleanup() {
-    #ifdef _WIN32
-        // Cleanup Windows Terminal
-        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-        CONSOLE_CURSOR_INFO cursorInfo;
-        GetConsoleCursorInfo(hOut, &cursorInfo);
-        cursorInfo.bVisible = true;                     // Show the cursor
-        SetConsoleCursorInfo(hOut, &cursorInfo);
-    #else
-        // Cleanup ncurses
-        endwin();
-    #endif
+    // #ifdef _WIN32
+    //     // Cleanup Windows Terminal
+    //     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    //     CONSOLE_CURSOR_INFO cursorInfo;
+    //     GetConsoleCursorInfo(hOut, &cursorInfo);
+    //     cursorInfo.bVisible = true;                     // Show the cursor
+    //     SetConsoleCursorInfo(hOut, &cursorInfo);
+    // #else
+    //     // Cleanup ncurses
+    //     endwin();
+    // #endif
 
 #ifdef DEBUG
 #if DEBUG_ENABLED
@@ -546,7 +551,11 @@ int main(int argc, char **argv) {
 
     int *size = context->snake_game_config->getSize();
 
-    // std::cout << size[0] << "; " << size[1] << std::endl;
+    #ifdef DEBUG
+    #if DEBUG 1
+        std::cout << size[0] << "; " << size[1] << std::endl;
+    #endif
+    #endif
 
     context->snake_game_log_system->printLog("CORE", "Columns: " + std::to_string(size[0]));
     context->snake_game_log_system->printLog("CORE", "Rows: " + std::to_string(size[1]));
@@ -556,23 +565,27 @@ int main(int argc, char **argv) {
 
     // actually code will place here
 
-    // TEST CODE!
-    //context->snake_game_main_menu->displayMainMenu(0);
+    #ifdef DEBUG
+    #if DEBUG 1
+        // TEST CODE!
+        //context->snake_game_main_menu->displayMainMenu(0);
 
-    if (fontType == 0x0) {
-        context->fontHelperVoid = new Font<char>(20, 20);
-        Font<char> *fontChar = static_cast<Font<char> *>(context->fontHelperVoid);
-        fontChar->setCharacter(1, 1, 'A');
-        fontChar->display();
-    } else if (fontType == 0x1) {
-        context->fontHelperVoid = new Font<wchar_t>(10, 10);
-        Font<wchar_t> *fontWStr = static_cast<Font<wchar_t> *>(context->fontHelperVoid);
-        fontWStr->setCharacter(1, 1, L'A');
-        fontWStr->display();
-    }
+        if (fontType == 0x0) {
+            context->fontHelperVoid = new Font<char>(20, 20);
+            Font<char> *fontChar = static_cast<Font<char> *>(context->fontHelperVoid);
+            fontChar->setCharacter(1, 1, 'A');
+            fontChar->display();
+        } else if (fontType == 0x1) {
+            context->fontHelperVoid = new Font<wchar_t>(10, 10);
+            Font<wchar_t> *fontWStr = static_cast<Font<wchar_t> *>(context->fontHelperVoid);
+            fontWStr->setCharacter(1, 1, L'A');
+            fontWStr->display();
+        }
 
-    for (;;);
-    // END TEST CODE
+        for (;;);
+        // END TEST CODE
+    #endif
+    #endif
 
     // cleanup
     context->snake_game_core->cleanup();
