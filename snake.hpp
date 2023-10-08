@@ -24,58 +24,13 @@
 #include <cassert>
 #include <map>
 #include <typeinfo>
+#include <mutex>
 
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 
-#ifdef _WIN32
-#include <mmsystem.h>
-#include <conio.h>
-#include <windows.h>
-#elif __linux__
-#include <ncurses.h>
-#include <unistd.h>
-#elif __APPLE__
-#include <ncurses.h>
-#include <unistd.h>
-#include <ApplicationServices/ApplicationServices.h>
-#include <CoreFoundation/CoreFoundation.h>
-#include <AudioToolbox/AudioToolbox.h>
-#endif
-
-enum class MenuOption { PLAY, EXIT };
-
-const std::string ANSI_CLEAR_SCREEN = "\033[2J\033[H";              // Clear the screen
-const std::string ANSI_BOLD = "\033[1m";                            // Bold Text
-const std::string ANSI_RESET = "\033[0m";                           // Reset
-const std::string ANSI_YELLOW = "\033[33m";                         // Yellow
-const std::string ANSI_CYAN = "\033[36m";                           // Cyan
-
-// wchar_t
-const wchar_t *ANSI_CLEAR_SCREEN_WSTRING = L"\033[2J\033[H";              // Clear the screen
-const wchar_t *ANSI_BOLD_WSTRING = L"\033[1m";                            // Bold Text
-const wchar_t *ANSI_RESET_WSTRING = L"\033[0m";                           // Reset
-const wchar_t *ANSI_YELLOW_WSTRING = L"\033[33m";                         // Yellow
-const wchar_t *ANSI_CYAN_WSTRING = L"\033[36m";                           // Cyan
-
-// Define Unicode code points for box-drawing characters
-const wchar_t *WCHAR_UNICODE_TOP_LEFT = L"\u250C";
-const wchar_t *WCHAR_UNICODE_TOP_RIGHT = L"\u2510";
-const wchar_t *WCHAR_UNICODE_HORIZONTAL_LINE = L"\u2500";
-const wchar_t *WCHAR_UNICODE_VERTICAL_LINE = L"\u2502";
-const wchar_t *WCHAR_UNICODE_BOTTOM_LEFT = L"\u2514";
-const wchar_t *WCHAR_UNICODE_BOTTOM_RIGHT = L"\u2518";
 const wchar_t *WCHAR_UNICODE_COPYRIGHT_SYMBOL = L"\u00A9";
-
-const char UNICODE_TOP_LEFT = '\xDA';
-const char UNICODE_TOP_RIGHT = '\xBF';
-const char UNICODE_BOTTOM_LEFT = '\xC0';
-const char UNICODE_BOTTOM_RIGHT = '\xD9';
-const char UNICODE_HORIZONTAL_LINE = '\xC4';
-const char UNICODE_VERTICAL_LINE = '\xB3';
-
-const wchar_t *UNICODE_CORNER_CHAR_WCHAR = WCHAR_UNICODE_TOP_LEFT;
-const char UNICODE_CORNER_CHAR_CHAR = UNICODE_TOP_LEFT;
 
 // Define for error message
 const std::string ABRT_MSG = "Process abort signal handled";
@@ -85,44 +40,19 @@ const std::string FPE_MSG = "Erroneous arithmetic operation";
 const std::string HUP_MSG = "Hangup";
 const std::string ILL_MSG = "Illegal instruction";
 const std::string INT_MSG = "Terminal interrupt signal";
+const std::string KILL_MSG = "Kill (cannot be caught or ignored)";
+const std::string PIPE_MSG = "Write on a pipe with no one to read it";
+const std::string POLL_MSG1 = "Pollable event";
 
 void errorHandler(int signal);
 void exitHandler(int signal);
 
 class SnakeSenzia {
     public:
-        class Menu;
         class Game;
         class Core;
         class Logging;
         class Timer;
-        class Config;
-};
-
-class SnakeSenzia::Config {
-    private:
-        typedef struct {
-            int columns, rows;
-        } CONSOLE_SIZE;
-
-        CONSOLE_SIZE *console = new CONSOLE_SIZE;
-    public:
-        int* getSize() {
-            int *arr = new int[2];
-            arr[0] = static_cast<int>(this->console->columns);
-            arr[1] = static_cast<int>(this->console->rows);
-
-            return arr;
-        }
-
-        void setSize(int *arraySize) {
-            this->console->columns = arraySize[0];
-            this->console->rows = arraySize[1];
-        }
-
-        CONSOLE_SIZE *get_structure() {
-            return this->console;
-        }
 };
 
 class SnakeSenzia::Core {
@@ -156,21 +86,10 @@ class SnakeSenzia::Core {
         std::string execCommand(const char* cmd);
         bool isProcessRunning(const std::string processName);
 
-        void detectConsoleSize();
-
-        class Sound;
+        class SoundPlayer;
         class FileSystem;
-};
-
-class SnakeSenzia::Core::Sound {
-    public:
-        #ifdef __APPLE__
-            bool isPlaying();
-        #endif
-
-        void PlaySoundLoop(std::string soundFile);
-        void PlaySound(std::string soundFile);
-        void StopSound();
+        class SnakeWindow;
+        class Font;
 };
 
 class SnakeSenzia::Logging {
@@ -185,74 +104,258 @@ class SnakeSenzia::Timer {
         std::vector<std::wstring> GetCurrentDateTimeWString();
 };
 
-class SnakeSenzia::Menu {
-    public:
-        MenuOption displayMainMenu(int selectedOption);
-};
-
 class SnakeSenzia::Core::FileSystem {
     public:
         std::string GetCurrentDirectory();
+        std::string GetResourcesDirectory();
+
+        bool isFileExists(std::string filePath) {
+            return std::ifstream(filePath).good();
+        }
 };
 
-template <typename CharType>
-class Font {
+class SnakeSenzia::Core::SoundPlayer : private SnakeSenzia::Core::FileSystem {
     private:
-        int _width, _height;
-        std::vector<std::vector<CharType>> _fontMatrix;
+        std::string SoundFile;
+        sf::SoundBuffer Buffer;
+        sf::Sound SoundSFML;
     public:
-        Font(int width, int height) : _width(width), _height(height) {
-            this->_fontMatrix.resize(this->_height);
+        SoundPlayer(std::string _soundFile) : SoundFile(_soundFile) {    
+            sf::SoundBuffer buf;
+            this->Buffer = buf;
 
-            for (int i = 0; i < this->_width; ++i) {
-                this->_fontMatrix[i].resize(this->_width, ' ');
-            }
-        }
-
-        // Set a character for font matrix
-        void setCharacter(int x, int y, CharType character) {
-            // Check if the coordinates are within the border
-            if (x >= 0 && x < _width && y >= 0 && y < _height) {
-            // Check if it's a corner position
-                if ((x == 0 && y == 0) || (x == _width - 1 && y == 0) ||
-                    (x == 0 && y == _height - 1) || (x == _width - 1 && y == _height - 1)) {
-                    // Set corner character
-                    if (typeid(character) == typeid(wchar_t)) {
-                        // _fontMatrix[y][x] = UNICODE_CORNER_CHAR_WCHAR;
-                    } else if (typeid(character) == typeid(char)) {
-                        _fontMatrix[y][x] = UNICODE_CORNER_CHAR_CHAR;
-                    }
-                } else {
-                    // Set inner character
-                    _fontMatrix[y][x] = character;
+            if (!isFileExists(GetResourcesDirectory() + this->SoundFile)) {
+                std::cout << "Sound cannot be loaded." << std::endl;
+                abort();
+            } else {
+                if (!this->Buffer.loadFromFile(GetResourcesDirectory() + this->SoundFile)) {
+                    std::cout << "Sound cannot be loaded." << std::endl;
+                    abort();
                 }
             }
         }
 
-        // Display the font matrix
-        void display() const {
-            // Check if we are initialized ncurses
-            for (const std::vector<CharType> &row : this->_fontMatrix) {
-                for (CharType character : row) {
-                    if (character == UNICODE_TOP_LEFT ||
-                        character == UNICODE_TOP_RIGHT ||
-                        character == UNICODE_HORIZONTAL_LINE ||
-                        character == UNICODE_VERTICAL_LINE ||
-                        character == UNICODE_BOTTOM_LEFT ||
-                        character == UNICODE_BOTTOM_RIGHT) {
-                            attron(A_BOLD);
-                            attron(COLOR_PAIR(1));
-                        } else {
-                            attroff(A_BOLD);
-                            attroff(COLOR_PAIR(1));
+        ~SoundPlayer() {}
+
+        void play() {
+            // Get audio source file
+            this->SoundSFML.setBuffer(this->Buffer);
+            this->SoundSFML.play();
+        }
+
+        void pause() {
+            this->SoundSFML.pause();
+        }
+
+        void stop() {
+            this->SoundSFML.stop();
+        }
+
+        void setPlayOffset(float secs) {
+            this->SoundSFML.setPlayingOffset(sf::seconds(secs));
+        }
+
+        sf::Time getPlayOffset() const {
+            return this->SoundSFML.getPlayingOffset();
+        }
+
+        void SetPitch(float pitch) {
+            this->SoundSFML.setPitch(pitch);
+        }
+
+        float GetPitch() const {
+            return this->SoundSFML.getPitch();
+        }
+
+        void SetLoop(bool isLoop) {
+            this->SoundSFML.setLoop(isLoop);
+        }
+
+        bool GetLoop() const {
+            return this->SoundSFML.getLoop();
+        }
+
+        const sf::SoundBuffer *GetBuffer() {
+            return this->SoundSFML.getBuffer();
+        }
+
+        const sf::SoundSource::Status GetStatus() const {
+            return this->SoundSFML.getStatus();
+        }
+
+        void resetBuf() {
+            this->SoundSFML.resetBuffer();
+        }
+
+        void setVolume(float volume) {
+            this->SoundSFML.setVolume(volume);
+        }
+
+        float getVolume() const {
+            return this->SoundSFML.getVolume();
+        }
+};
+
+class SnakeSenzia::Core::Font : private SnakeSenzia::Core::FileSystem {
+    private:
+        std::string fontFile;
+        sf::Font font;
+    public:
+        Font(std::string FontFile) : fontFile(FontFile) {
+            if (!isFileExists(this->fontFile)) {
+                std::cout << "Font file doesn't exists. Abort" << std::endl;
+                abort();
+            }
+        }
+
+        ~Font() {}
+
+        bool loadFontFromFile() {
+            return this->font.loadFromFile(this->fontFile);
+        }
+
+        void loadFontFromMemory(const void *data, size_t size) {
+            this->font.loadFromMemory(data, size);
+        }
+
+        void setSmooth(bool smooth) {
+            this->font.setSmooth(smooth);
+        }
+
+        bool GetSmoothStatus() const {
+            return this->font.isSmooth();
+        }
+
+        sf::Font getFont() const {
+            return this->font;
+        }
+};
+
+class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
+    private:
+        int Width, Height;
+        std::string Title;
+        uint32_t Style;
+        sf::Window *window;
+        sf::Event event;
+        std::mutex windowMutex;
+    public:
+        SnakeWindow(int width, int height, std::string title) :
+            Width(width), Height(height), Title(title) {
+                std::string KernelDetails = std::string(execCommand("uname -s && uname -r && uname -m"));
+                std::cout << "Machine: " << KernelDetails << std::endl;
+
+                this->window = new sf::Window (
+                    sf::VideoMode(this->Width, this->Height), 
+                        this->Title + 
+                        std::string(" - ") +
+                        std::string(execCommand("uname -m"))
+                );
+        }
+
+        ~SnakeWindow() {
+            if (this->window != nullptr) {
+                delete this->window;
+                this->window = nullptr;
+            }
+        }
+
+        void ShowWindow() {
+            if (this->window != nullptr) {
+                while (this->window->isOpen()) {
+                    // Lock the mutex before accessing sf::Window
+        
+                    while (this->window->pollEvent(this->event)) {
+                        if (this->event.type == sf::Event::Closed) {
+                            this->window->close();
                         }
+                    }
 
-                        addch(character);
+                    // draw here
+                    this->window->display();
                 }
-
-                printw("\n");
+            } else {
+                std::cout << "Failed to create graphics interface." << std::endl;
+                abort();
             }
+        }
+};
 
-            refresh();
+template <typename Object>
+class GameHandler : private SnakeSenzia::Core::SnakeWindow {
+    private:
+        Object* objectPtr;
+        std::vector<Object *> arrayElements;
+
+        typedef struct {
+            std::vector<Object *> dataElements;
+            int dataElementCount;
+        } PackedData;
+
+        PackedData *packedData;
+
+        int elementCount = 0;
+    public:
+        void push(Object* object) { 
+            arrayElements.push_back(this->objectPtr);
+            this->elementCount = this->arrayElements.size();
+        }
+
+        void pack() {
+            this->packedData->dataElements = this->arrayElements;
+            this->packedData->dataElementCount = this->elementCount;
+        }
+
+        Object* get() { 
+            return this->objectPtr; 
+        }
+
+        std::vector<Object *> getArrayObjects() { 
+            return this->arrayElements; 
+        }
+
+        PackedData *getData() {
+            return (PackedData *)this->packedData;
+        }
+};
+
+template <typename Object>
+class WindowHandler : public SnakeSenzia::Core::SnakeWindow, 
+                      public SnakeSenzia::Core::Font, 
+                      public SnakeSenzia::Core::SoundPlayer, 
+                      public GameHandler<Object> {
+    private:
+        std::vector<Object *> ObjectParsed;
+
+        typedef struct {
+            std::vector<Object *> ObjectParser;
+            int elementCount;
+        } PackedData;
+
+        PackedData *dataParse;
+
+        int ObjectCount;
+
+        int Width, Height;
+        std::string WindowTitle;
+        std::string fontFile;
+    public:
+        WindowHandler(int width, int height, std::string windowTitle) : 
+            Width(width), Height(height), WindowTitle(windowTitle), 
+            SnakeSenzia::Core::SnakeWindow(width, height, windowTitle) {}
+
+        void draw() {
+            // Step 1: Get packed data from Handler
+            this->dataParse = GameHandler<Object>::getData();
+
+            // Step 2: Setting variables
+            this->ObjectParsed = this->dataParse->ObjectParser;
+            this->ObjectCount = this->dataParse->elementCount;
+        }
+
+        void transfer(Object *object) {
+            if (typeid(object) == typeid(sf::Text)) {
+
+            }
         }
 };

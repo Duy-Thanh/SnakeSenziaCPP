@@ -19,7 +19,7 @@ CC_VERSION=$(shell $(CC) --version | grep version)
 ROOT_DIR=$(PWD)
 SFML_ROOT_DIR=$(ROOT_DIR)/SFML
 SFML_SRC_DIR=$(SFML_ROOT_DIR)
-SFML_BUILD_DIR=$(SFML_ROOT_DIR)/build
+SFML_BUILD_DIR=$(SFML_ROOT_DIR)/build-sfml
 SFML_INCLUDE_DIR=$(SFML_ROOT_DIR)/include
 SFML_LIB_DIR=$(SFML_BUILD_DIR)/lib
 INCLUDE_DIR=$(ROOT_DIR) -I$(SFML_INCLUDE_DIR)
@@ -178,7 +178,7 @@ always:
 	@mkdir -p $(BUILD_DIR_AARCH64_V83)
 	@mkdir -p $(DISASM_CC_DIR_AARCH64_V83)
 	@mkdir -p $(DISASM_OBJDUMP_DIR_AARCH64_V83)
-
+always2: always
 	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_X86_64))
 	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_X86_64_HASWELL))
 	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_AARCH64))
@@ -186,7 +186,7 @@ always:
 	$(shell cp $(SFML_BUILD_DIR)/lib/*.* $(BUILD_DIR_UNIVERSAL))
 
 # x86_64
-x86_64: always
+x86_64: always2
 	@echo "Building x86_64 executable"
 	@$(CC) $(COMPILER_FLAGS_X86_64)
 	@$(CC) $(COMPILER_FLAGS_DISASM_X86_64)
@@ -194,7 +194,7 @@ x86_64: always
 	@$(OBJDUMP) $(OBJDUMP_DISASM_FLAGS_X86_64)
 
 # x86_64 (Intel Haswell and up)
-x86_64h: always
+x86_64h: always2
 	@echo "Building x86_64 (haswell) executable"
 	@$(CC) $(COMPILER_FLAGS_X86_64_HASWELL)
 	@$(CC) $(COMPILER_FLAGS_DISASM_X86_64_HASWELL)
@@ -202,7 +202,7 @@ x86_64h: always
 	@$(OBJDUMP) $(OBJDUMP_DISASM_FLAGS_X86_64_HASWELL)
 
 # arm64: Mobile device
-arm64: always
+arm64: always2
 	@echo "Building arm64 executable"
 	@$(CC) $(COMPILER_FLAGS_AARCH64)
 	@$(CC) $(COMPILER_FLAGS_DISASM_AARCH64)
@@ -210,7 +210,7 @@ arm64: always
 	@$(OBJDUMP) $(OBJDUMP_DISASM_FLAGS_AARCH64)
 
 # arm64e (ARM64v8.3): Apple Silicon and ARMv8.3 architectures
-arm64e: always
+arm64e: always2
 	@echo "Building arm64e executable"
 	@$(CC) $(COMPILER_FLAGS_AARCH64_V83)
 	@$(CC) $(COMPILER_FLAGS_DISASM_AARCH64_V83)

@@ -1,0 +1,2 @@
+@echo "Building SFML as dependency library"
+@cd SFML && ./build.sh && cd ..

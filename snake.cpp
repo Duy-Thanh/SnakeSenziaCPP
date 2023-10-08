@@ -13,42 +13,7 @@ typedef struct {
     SnakeSenzia::Core *snake_game_core = NULL;
     SnakeSenzia::Logging *snake_game_log_system = NULL;
     SnakeSenzia::Timer *snake_game_timer = NULL;
-    SnakeSenzia::Core::Sound *snake_game_core_sound = NULL;
     SnakeSenzia::Core::FileSystem *snake_game_core_filesystem = NULL;
-    SnakeSenzia::Menu *snake_game_main_menu = NULL;
-    SnakeSenzia::Config *snake_game_config = NULL;
-
-    void *fontHelperVoid = NULL;
-
-    void createFont(int type) {
-        if (type == 0) {
-            Font<char> *fontHelper = NULL;
-            fontHelperVoid = fontHelper;
-        } else if (type == 1) {
-            Font<wchar_t> *fontHelper = NULL;
-            fontHelperVoid = fontHelper;
-        }
-    };
-
-    uint32_t getFontType(void *variable) {
-        if (typeid(Font<char>) == typeid(*static_cast<Font<char> *>(variable))) {
-            return (uint32_t)0x0;
-        } else if (typeid(Font<wchar_t>) == typeid(*static_cast<Font<wchar_t> *>(variable))) {
-            return (uint32_t)0x1;
-        } else {
-            return (uint32_t)0xFFFF;
-        }
-    };
-
-    void freeFont(void *variable) {
-        if (getFontType(variable) == 0x1) {
-            delete static_cast<Font<char> *>(variable);
-        } else if (getFontType(variable) == 0x2) {
-            delete static_cast<Font<wchar_t> *>(variable);
-        } else if (getFontType(variable) == 0xFFFF) {
-            delete variable;
-        }
-    };
 } GameContext;
 
 // I know public variable is evil, but we need GameContext as pointer to access to the function
@@ -162,207 +127,13 @@ void SnakeSenzia::Logging::printLogWString(std::wstring TAG, std::wstring descri
 /**
  * Core section
 */
-
-// Core sound
-// THIS IS BROKEN AND THE FIX CURRENTLY IN PROGRESS (ON MACOS/IOS)
-
-#ifdef _WIN32
-    // Windows sound playback variables
-    HWAVEOUT hWaveOut = nullptr;
-    WAVEHDR waveHeader;
-    bool isSoundPlaying = false;
-    bool stopSoundFlag = false;
-
-#elif __linux__
-    std::atomic<bool> shouldStop(false);
-    std::thread soundThread;
-
-#elif __APPLE__
-    // std::atomic<bool> shouldStop(false);
-    // std::mutex mutex;
-    // bool stopFlag = false;
-    // std::condition_variable cv;
-    // AudioPlayer *ap;
-#endif
-
-void SnakeSenzia::Core::Sound::PlaySoundLoop(std::string soundFile) {
-    #ifdef _WIN32
-        // Windows: use WaveOut API for more control
-        if (isSoundPlaying) {
-            // Stop the currently playing sound if they're playing
-            context->snake_game_core_sound->StopSound();
-        }
-
-        // Load and play the sound asynchoronusly
-        MMRESULT result = waveOutOpen(&hWaveOut,
-                                      WAVE_MAPPER,
-                                      &waveFormat,
-                                      0, 0,
-                                      WAVE_FORMAT_DIRECT | CALLBACK_NULL);
-
-        if (result == MMSYSERR_NOERROR) {
-            std::ifstream file(soundFile, std::ios::binary | std::ios::ate);
-            if (file.is_open()) {
-                size_t fileSize = file.tellg();
-                file.seekg(0, std::ios::beg);
-
-                waveHeader.lpData = new char[fileSize];
-                file.read(waveHeader.lpData, fileSize);
-                file.close();
-
-                waveHeader.dwBufferLength = static_cast<DWORD>(fileSize);
-                result = waveOutPrepareHeader(hWaveOut, &waveHeader, sizeof(WAVEHDR));
-                if (result == MMSYSERR_NOERROR) {
-                    while (!stopSoundFlag) {
-                        result = waveOutWrite(hWaveOut, &waveHeader, sizeof(WAVEHDR));
-                        if (result == MMSYSERR_NOERROR) {
-                            isSoundPlaying = true;
-
-                            // Sleep briefly to avoid busy-waiting
-                            std::this_thread::sleep_for(std::chrono::miliseconds(100));
-                        } else {
-                            // Handle error
-                            context->snake_game_log_system->printLog("[CORE::SOUND_CORE]", "Error to play media file");
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-    #elif __linux__
-        // Linux: Use aplay for WAV file playback
-        
-        if (shouldStop) {
-            context->snake_game_core_sound->StopSound();
-        }
-
-        shouldStop = false; // Reset the flag
-
-        while (!shouldStop) {
-            std::stringstream ss;
-            ss << "aplay " << soundFile << " &";
-            system(ss.str().c_str());
-
-            // Sleep for a while to control the loop playback speed
-            std::this_thread::sleep_for(std::chrono::seconds(3));
-        }
-
-    #elif __APPLE__
-        // bool isPlaying = false;
-        // bool shouldRestart = false;
-        // ap = AudioPlayer::file(soundFile.c_str());
-
-        // if (!ap) {
-        //     context->snake_game_log_system->printLog("CORE", "SOUND_CORE: Error loading audio");
-        // } else {
-        //     ap->play();
-        // }
-
-        // do {
-        //     CFRunLoopRunInMode (                           // 6
-        //         kCFRunLoopDefaultMode,                     // 7
-        //         0.25,                                      // 8
-        //         false                                      // 9
-        //     );
-
-        //     if (ap->isPlaying()) { 
-        //         if (!shouldStop) { continue; }
-        //         else { 
-        //             ap->stop();
-        //             CFRunLoopStop(CFRunLoopGetCurrent());
-        //             break;
-        //         } 
-        //     }
-        //     else {
-        //         if (!shouldStop) { ap->play(); }
-        //         else { 
-        //             ap->stop();
-        //             CFRunLoopStop(CFRunLoopGetCurrent());
-        //             break; 
-        //         }
-        //     }
-        // } while (ap->isPlaying() && !stopFlag && !shouldStop);
-
-        // FIX IN PROGRESS
-    #endif
-}
-
-void SnakeSenzia::Core::Sound::PlaySound(std::string soundFile) {
-    void (SnakeSenzia::Core::Sound::*sound_core)(std::string);
-    sound_core = &SnakeSenzia::Core::Sound::PlaySoundLoop;
-
-    std::future<void> soundThread = std::async([this, sound_core, soundFile]() {
-        (this->*sound_core)(soundFile);
-    });
-}
-
-void SnakeSenzia::Core::Sound::StopSound() {
-    #ifdef _WIN32
-        // Windows: use WaveOut API for more control
-        if (isSoundPlaying) {
-            // Stop the currently playing sound if they're playing
-            waveOutReset(hWaveOut);
-            waveOutUnprepareHeader(hWaveOut, &waveHeader, sizeof(WAVEHDR));
-            delete[] waveHeader.lpData;
-            waveOutClose(hWaveOut);
-            isSoundPlaying = false;
-            stopSoundFlag = true;
-        }
-    #elif __linux__
-        // Linux: Stop all aplay process
-        system("killall -q aplay");
-    #elif __APPLE__
-        // THIS CODE ARE CURRENTLY IN BUG AND NOW NEED TO FIX
-        // if (ap) {
-        //     ap->stop();
-        //     delete ap; // You can optionally delete the instance
-        //     ap = nullptr; // Reset the ap pointer
-        // }
-    #endif
-}
-
-// Main menu
-MenuOption SnakeSenzia::Menu::displayMainMenu(int selectedOption) {
-    #ifdef _WIN32
-        system("cls");
-    #else
-        std::cout << ANSI_CLEAR_SCREEN;
-    #endif
-}
-
 // Core application
-void SnakeSenzia::Core::detectConsoleSize() {
-    #ifdef _WIN32
-        CONSOLE_SCREEN_BUFFER_INFO csbi;
-        int *size = new int[2];
-
-        GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-        size[0] = csbi.srWindow.Right - csbi.srWindow.Left + 1;
-        size[1] = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
-
-        context->snake_game_config->setSize(size);
-
-        delete size;
-        size = NULL;
-    #elif defined(__linux__) || defined(__APPLE__)
-        struct winsize w;
-        ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-
-        int *size = new int[2];
-
-        size[0] = static_cast<int>(w.ws_col);
-        size[1] = static_cast<int>(w.ws_row);
-
-        context->snake_game_config->setSize(size);
-
-        delete size;
-        size = NULL;
-    #endif
-}
-
 std::string SnakeSenzia::Core::FileSystem::GetCurrentDirectory() {
     return std::string(std::filesystem::current_path().string());
+}
+
+std::string SnakeSenzia::Core::FileSystem::GetResourcesDirectory() {
+    return GetCurrentDirectory() + std::string("/Resources/");
 }
 
 std::string SnakeSenzia::Core::execCommand(const char* cmd) {
@@ -415,42 +186,9 @@ void SnakeSenzia::Core::initialize() {
             std::string(context->snake_game_core_filesystem->GetCurrentDirectory()));
     #endif
     #endif
-
-    sf::RenderWindow window(sf::VideoMode(800, 600), "Snake Senzia " + (std::string(context->snake_game_core->execCommand("arch"))));
-    
-    // #ifdef _WIN32
-    //     // Setup Windows Terminal
-    //     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    //     CONSOLE_CURSOR_INFO cursorInfo;
-    //     GetConsoleCursorInfo(hOut, &cursorInfo);
-    //     cursorInfo.bVisible = true;                // Hide the cursor
-    //     SetConsoleCursorInfo(hOut, &cursorInfo);
-    // #else
-    //     // Setup ncurses
-    //     initscr();
-    //     start_color();
-    //     init_pair(1, COLOR_YELLOW, COLOR_CYAN);
-    //     cbreak();
-    //     noecho();
-    //     intrflush(stdscr, FALSE);
-    //     keypad(stdscr, TRUE);
-    //     curs_set(FALSE);
-    // #endif
 }
 
 void SnakeSenzia::Core::cleanup() {
-    // #ifdef _WIN32
-    //     // Cleanup Windows Terminal
-    //     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    //     CONSOLE_CURSOR_INFO cursorInfo;
-    //     GetConsoleCursorInfo(hOut, &cursorInfo);
-    //     cursorInfo.bVisible = true;                     // Show the cursor
-    //     SetConsoleCursorInfo(hOut, &cursorInfo);
-    // #else
-    //     // Cleanup ncurses
-    //     endwin();
-    // #endif
-
 #ifdef DEBUG
 #if DEBUG_ENABLED
     context->snake_game_log_system->printLog("CORE", "Game exit event triggered");
@@ -477,9 +215,6 @@ void exitHandler(int signal) {
     delete context->snake_game_core;
     context->snake_game_core = NULL;
 
-    delete context->snake_game_core_sound;
-    context->snake_game_core_sound = NULL;
-
     delete context->snake_game_timer;
     context->snake_game_timer = NULL;
 
@@ -488,14 +223,6 @@ void exitHandler(int signal) {
 
     delete context->snake_game_core_filesystem;
     context->snake_game_core_filesystem = NULL;
-
-    delete context->snake_game_main_menu;
-    context->snake_game_main_menu = NULL;
-
-    delete context->snake_game_config;
-    context->snake_game_config = NULL;
-
-    context->freeFont(context->fontHelperVoid);
 
     delete context;
     context = NULL;
@@ -531,95 +258,20 @@ int main(int argc, char **argv) {
     std::signal(SIGABRT, errorHandler);
     std::signal(SIGALRM, errorHandler);
 
-    context->createFont(1);
-    uint32_t fontType = context->getFontType(context->fontHelperVoid);
-
     context->snake_game_class = new SnakeSenzia;
     context->snake_game_core = new SnakeSenzia::Core;
-    context->snake_game_config = new SnakeSenzia::Config;
     context->snake_game_timer = new SnakeSenzia::Timer;
     context->snake_game_log_system = new SnakeSenzia::Logging;
-    context->snake_game_core_sound = new SnakeSenzia::Core::Sound;
     context->snake_game_core_filesystem = new SnakeSenzia::Core::FileSystem;
-    context->snake_game_main_menu = new SnakeSenzia::Menu;
 
-    // Set the locale to a UTF-8 compatible locale
-    std::locale utf8_locale("en_US.UTF-8");
-    std::wcout.imbue(utf8_locale);
+    // Create a font object (you should load your own font)
+    sf::Font font;
 
-    context->snake_game_core->detectConsoleSize();
-
-    int *size = context->snake_game_config->getSize();
-
-    #ifdef DEBUG
-    #if DEBUG 1
-        std::cout << size[0] << "; " << size[1] << std::endl;
-    #endif
-    #endif
-
-    context->snake_game_log_system->printLog("CORE", "Columns: " + std::to_string(size[0]));
-    context->snake_game_log_system->printLog("CORE", "Rows: " + std::to_string(size[1]));
-
-    // initialize
-    context->snake_game_core->initialize();
-
-    // actually code will place here
-
-    #ifdef DEBUG
-    #if DEBUG 1
-        // TEST CODE!
-        //context->snake_game_main_menu->displayMainMenu(0);
-
-        if (fontType == 0x0) {
-            context->fontHelperVoid = new Font<char>(20, 20);
-            Font<char> *fontChar = static_cast<Font<char> *>(context->fontHelperVoid);
-            fontChar->setCharacter(1, 1, 'A');
-            fontChar->display();
-        } else if (fontType == 0x1) {
-            context->fontHelperVoid = new Font<wchar_t>(10, 10);
-            Font<wchar_t> *fontWStr = static_cast<Font<wchar_t> *>(context->fontHelperVoid);
-            fontWStr->setCharacter(1, 1, L'A');
-            fontWStr->display();
-        }
-
-        for (;;);
-        // END TEST CODE
-    #endif
-    #endif
+    SnakeSenzia::Core::SnakeWindow window(800, 600, "Hello World");
+    window.ShowWindow();
 
     // cleanup
     context->snake_game_core->cleanup();
-
-    // Free resources before exit
-    delete context->snake_game_class;
-    context->snake_game_class = NULL;
-
-    delete context->snake_game_core;
-    context->snake_game_core = NULL;
-
-    delete context->snake_game_core_sound;
-    context->snake_game_core_sound = NULL;
-
-    delete context->snake_game_timer;
-    context->snake_game_timer = NULL;
-
-    delete context->snake_game_log_system;
-    context->snake_game_log_system = NULL;
-
-    delete context->snake_game_core_filesystem;
-    context->snake_game_core_filesystem = NULL;
-
-    delete context->snake_game_main_menu;
-    context->snake_game_main_menu = NULL;
-
-    delete context->snake_game_config;
-    context->snake_game_config = NULL;
-
-    delete context;
-    context = NULL;
-
-    delete size;
-    size = NULL;
 
     return 0;
 }

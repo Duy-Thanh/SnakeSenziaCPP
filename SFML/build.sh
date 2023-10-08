@@ -1,5 +1,15 @@
 #! /bin/bash
 
+#
+# build.sh - The custom shell script to build SFML from source
+#
+# Copyright (C) 2023 segfault.e404.
+#
+
+CURRENT_DIRECTORY=$(PWD)
+
+rm -rf build-x86_64 build-x86_64h build-arm64 build-arm64e
+
 # x86_64
 
 mkdir -p build-x86_64
@@ -22,6 +32,17 @@ cmake .. -DCMAKE_OSX_ARCHITECTURES=arm64
 make VERBOSE=1 -j2
 cd ..
 
+echo
+echo "WARNING: ARM64E CURRENTLY HAVE AN KNOWN BUG SO THAT SFML CAN'T BE BUILT."
+echo "THE WORKAROUND ARE APPLIED: DISABLE ARM64E AS BUILD TARGET"
+echo
+
+#
+# NOTE:
+#       arm64e currently have error so that SFML can't be built. 
+#       The workaround is disable arm64e's target
+#
+
 # arm64e
 #mkdir -p build-arm64e
 #cd build-arm64e
@@ -30,10 +51,11 @@ cd ..
 #cd ..
 
 # universal
-mkdir -p build
-cd build
+mkdir -p build-sfml
+cd build-sfml
 mkdir lib
 cd lib
+
 lipo -create \
 	../../build-x86_64/lib/libsfml-audio.2.6.0.dylib \
 	../../build-x86_64h/lib/libsfml-audio.2.6.0.dylib \
@@ -83,5 +105,26 @@ lipo -create \
 
 ln -s libsfml-window.2.6.0.dylib libsfml-window.2.6.dylib
 ln -s libsfml-window.2.6.0.dylib libsfml-window.dylib
+
+echo
+echo "Now installing section will begin shortly. You may required to enter 'sudo' passowrd."
+echo
+
+# Generating install script
+
+rm -rf install.sh
+
+echo "#! /bin/bash" >> $PWD/install.sh
+echo "#" >> $PWD/install.sh
+echo "# install.sh - Auto-generated install script. Do not edit!" >> $PWD/install.sh
+echo "#" >> $PWD/install.sh
+echo "" >> $PWD/install.sh
+echo "echo \"Installing libraries.....\"" >> $PWD/install.sh
+echo "" >> $PWD/install.sh
+echo "sudo cp *.* /usr/local/lib" >> $PWD/install.sh
+echo "" >> $PWD/install.sh
+echo "" >> $PWD/install.sh
+
+chmod +x $PWD/install.sh && ./install.sh
 
 cd ../..
