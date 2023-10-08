@@ -255,6 +255,7 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
         sf::Event event;
         std::mutex windowMutex;
         sf::Drawable *objects;
+        void (* animationFunc)();
     public:
         SnakeWindow(int width, int height, std::string title) :
             Width(width), Height(height), Title(title) {
@@ -284,6 +285,16 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
             if (this->objects != nullptr) {
                 this->window->draw(* this->objects);
             } else return;
+        }
+
+        void setAnimation(void (* animationFunction)()) {
+            this->animationFunc = animationFunction;
+        }
+
+        void runAnimation() {
+            if (this->animationFunc) {
+                this->animationFunc();
+            }
         }
 
         void ShowWindow() {

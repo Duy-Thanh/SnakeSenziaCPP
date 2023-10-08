@@ -241,7 +241,55 @@ void errorHandler(int signal) {
 
     // Dump current register
     #include <CPUHelper.h>
+
+    // Free resources before exit
+    delete context->snake_game_class;
+    context->snake_game_class = NULL;
+
+    delete context->snake_game_core;
+    context->snake_game_core = NULL;
+
+    delete context->snake_game_timer;
+    context->snake_game_timer = NULL;
+
+    delete context->snake_game_log_system;
+    context->snake_game_log_system = NULL;
+
+    delete context->snake_game_core_filesystem;
+    context->snake_game_core_filesystem = NULL;
+
+    delete context;
+    context = NULL;
+
+    exit(0);
 }
+
+// CyberDay introduction screen
+typedef struct {
+    sf::Text yChar;
+    sf::Text aChar;
+    sf::Text DChar;
+    sf::Text rChar;
+    sf::Text eChar;
+    sf::Text bChar;
+    sf::Text yChar2;
+    sf::Text CChar;
+
+    void alignCenter(sf::Text text) {
+        text.setOrigin(text.getLocalBounds().width / 2.0f, text.getLocalBounds().height / 2.0f);
+    };
+
+    void initializeAnimation() {
+        alignCenter(yChar);
+        alignCenter(aChar);
+        alignCenter(DChar);
+        alignCenter(rChar);
+        alignCenter(eChar);
+        alignCenter(bChar);
+        alignCenter(yChar2);
+        alignCenter(CChar);
+    }
+} IntroScreen;
 
 int main(int argc, char **argv) {
     // Create instance for classes
@@ -264,6 +312,11 @@ int main(int argc, char **argv) {
     context->snake_game_log_system = new SnakeSenzia::Logging;
     context->snake_game_core_filesystem = new SnakeSenzia::Core::FileSystem;
 
+    std::locale old_locale;  // current locale
+    setlocale(LC_ALL, "en_US.UTF-8");
+
+    context->snake_game_core->initialize();
+
     // Create a font object (you should load your own font)
     sf::Font font;
     if (!font.loadFromFile("Resources/ARCADECLASSIC.TTF")) {
@@ -272,14 +325,16 @@ int main(int argc, char **argv) {
     }
 
     // Title of Menu game
-    sf::Text *title = new sf::Text("Snake Senzia", font, 38);
-
+    sf::Text *title = new sf::Text("Snake Senzia", font, 48);
 
     title->setPosition(200, 200);
     title->setOutlineColor(sf::Color::White);
     title->setFillColor(sf::Color::White);
 
-    SnakeSenzia::Core::SnakeWindow window(1280, 720, "Hello World");
+    SnakeSenzia::Core::SnakeWindow window(1280, 720, "Snake Senzia (" + 
+        std::string(context->snake_game_core->execCommand("arch")) + std::string(")"));
+    
+    // Initialize object to draw on the screen
     window.setObject(title);
     window.ShowWindow();
 
