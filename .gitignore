@@ -1,0 +1,5 @@
+
+disasm/gcc/aarch64/SnakeSenzia.asm
+disasm/gcc/aarch64e/SnakeSenzia.asm
+disasm/gcc/x86_64/SnakeSenzia.asm
+disasm/gcc/x86_64h/SnakeSenzia.asm
