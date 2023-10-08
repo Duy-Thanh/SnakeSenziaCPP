@@ -93,7 +93,7 @@ EXEC_OUTPUT_AARCH64_V83=$(BUILD_DIR_AARCH64_V83)/SnakeSenzia
 BUILD_DIR_UNIVERSAL=$(BUILD_DIR)/universal
 EXEC_OUTPUT_UNIVERSAL=$(BUILD_DIR_UNIVERSAL)/SnakeSenzia
 
-LIBS=-L$(SFML_LIB_DIR) -lsfml-graphics -lsfml-window -lsfml-system
+LIBS=-L$(SFML_LIB_DIR) -lsfml-graphics -lsfml-window -lsfml-audio -lsfml-network -lsfml-system
 
 # Compile and Linking configurations
 

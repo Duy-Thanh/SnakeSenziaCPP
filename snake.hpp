@@ -53,6 +53,7 @@ class SnakeSenzia {
         class Core;
         class Logging;
         class Timer;
+        class Font;
 };
 
 class SnakeSenzia::Core {
@@ -200,18 +201,32 @@ class SnakeSenzia::Core::Font : private SnakeSenzia::Core::FileSystem {
     private:
         std::string fontFile;
         sf::Font font;
+        bool loaded;
     public:
-        Font(std::string FontFile) : fontFile(FontFile) {
+        Font(std::string FontFile) : fontFile(FontFile), loaded(false) {
             if (!isFileExists(this->fontFile)) {
-                std::cout << "Font file doesn't exists. Abort" << std::endl;
-                abort();
+                std::cout << "Font file doesn't exist: " << this->fontFile << std::endl;
+                return;
+            }
+
+            // Load font when the object is created
+            this->loaded = this->font.loadFromFile(this->fontFile);
+            if (!this->loaded) {
+                std::cout << "Failed to load font from file: " << this->fontFile << std::endl;
             }
         }
 
-        ~Font() {}
+        bool isLoaded() const {
+            return this->loaded;
+        }
 
-        bool loadFontFromFile() {
-            return this->font.loadFromFile(this->fontFile);
+        sf::Font getFont() const {
+            if (this->loaded) {
+                return this->font;
+            }
+            // Return a default font or handle the situation as needed when the font is not loaded
+            // For example, you can return sf::Font() or throw an exception.
+            return sf::Font(); // Returning an empty font for simplicity, handle this better in your code
         }
 
         void loadFontFromMemory(const void *data, size_t size) {
@@ -226,8 +241,8 @@ class SnakeSenzia::Core::Font : private SnakeSenzia::Core::FileSystem {
             return this->font.isSmooth();
         }
 
-        sf::Font getFont() const {
-            return this->font;
+        void *getFont() {
+            return &(this->font);
         }
 };
 
@@ -236,20 +251,21 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
         int Width, Height;
         std::string Title;
         uint32_t Style;
-        sf::Window *window;
+        sf::RenderWindow *window;
         sf::Event event;
         std::mutex windowMutex;
+        sf::Drawable *objects;
     public:
         SnakeWindow(int width, int height, std::string title) :
             Width(width), Height(height), Title(title) {
                 std::string KernelDetails = std::string(execCommand("uname -s && uname -r && uname -m"));
                 std::cout << "Machine: " << KernelDetails << std::endl;
 
-                this->window = new sf::Window (
+                this->window = new sf::RenderWindow (
                     sf::VideoMode(this->Width, this->Height), 
                         this->Title + 
                         std::string(" - ") +
-                        std::string(execCommand("uname -m"))
+                        std::string(execCommand("uname -m")) + ")"
                 );
         }
 
@@ -258,6 +274,16 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
                 delete this->window;
                 this->window = nullptr;
             }
+        }
+
+        void setObject(sf::Drawable *object) {
+            this->objects = object;
+        }
+
+        void draw() {
+            if (this->objects != nullptr) {
+                this->window->draw(* this->objects);
+            } else return;
         }
 
         void ShowWindow() {
@@ -272,6 +298,8 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
                     }
 
                     // draw here
+                    draw();
+
                     this->window->display();
                 }
             } else {

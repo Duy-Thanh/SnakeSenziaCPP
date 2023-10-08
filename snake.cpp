@@ -266,8 +266,21 @@ int main(int argc, char **argv) {
 
     // Create a font object (you should load your own font)
     sf::Font font;
+    if (!font.loadFromFile("Resources/ARCADECLASSIC.TTF")) {
+        std::cout << "Failed to load required resource" << std::endl;
+        abort();
+    }
 
-    SnakeSenzia::Core::SnakeWindow window(800, 600, "Hello World");
+    // Title of Menu game
+    sf::Text *title = new sf::Text("Snake Senzia", font, 38);
+
+
+    title->setPosition(200, 200);
+    title->setOutlineColor(sf::Color::White);
+    title->setFillColor(sf::Color::White);
+
+    SnakeSenzia::Core::SnakeWindow window(1280, 720, "Hello World");
+    window.setObject(title);
     window.ShowWindow();
 
     // cleanup
