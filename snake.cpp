@@ -9,11 +9,17 @@
 
 // public variables
 typedef struct {
+    int width;
+    int height;
+} WindowGUIConfig;
+
+typedef struct {
     SnakeSenzia *snake_game_class = NULL;
     SnakeSenzia::Core *snake_game_core = NULL;
     SnakeSenzia::Logging *snake_game_log_system = NULL;
     SnakeSenzia::Timer *snake_game_timer = NULL;
     SnakeSenzia::Core::FileSystem *snake_game_core_filesystem = NULL;
+    WindowGUIConfig *window_config = NULL;
 } GameContext;
 
 // I know public variable is evil, but we need GameContext as pointer to access to the function
@@ -25,6 +31,9 @@ typedef struct {
 //    every mordern operating system by default.
 //
 GameContext *context = NULL;
+
+// Window Configuration
+WindowGUIConfig *gui_config = NULL;
 
 // Timer
 std::vector<std::string> SnakeSenzia::Timer::GetCurrentDateTime() {
@@ -236,7 +245,64 @@ void errorHandler(int signal) {
 
     if (signal == SIGABRT) {
         context->snake_game_log_system->printLog("CORE", 
-            "FATAL ERROR");
+            "FATAL ERROR" + ABRT_MSG);
+    } else if (signal == SIGALRM) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + ALARM_MSG);
+    } else if (signal == SIGBUS) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + BUS_MSG);
+    }else if (signal == SIGFPE) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + FPE_MSG);
+    }else if (signal == SIGHUP) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + HUP_MSG);
+    }else if (signal == SIGILL) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + ILL_MSG);
+    }else if (signal == SIGINT) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + INT_MSG);
+    }else if (signal == SIGKILL) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + KILL_MSG);
+    }else if (signal == SIGPIPE) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + PIPE_MSG);
+    }else if (signal == SIGPROF) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + PROF_MSG);
+    }else if (signal == SIGQUIT) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + QUIT_MSG);
+    }else if (signal == SIGSEGV) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + SEGV_MSG);
+    }else if (signal == SIGSYS) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + SYS_MSG);
+    }else if (signal == SIGTERM) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + TERM_MSG);
+    }else if (signal == SIGTRAP) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + TRAP_MSG);
+    }else if (signal == SIGUSR1) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + USR1_MSG);
+    }else if (signal == SIGUSR2) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + USR2_MSG);
+    }else if (signal == SIGVTALRM) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + VTALRM_MSG);
+    }else if (signal == SIGXCPU) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + XCPU_MSG);
+    }else if (signal == SIGXFSZ) {
+        context->snake_game_log_system->printLog("CORE", 
+            "FATAL ERROR" + XFSZ_MSG);
     }
 
     // Dump current register
@@ -266,6 +332,10 @@ void errorHandler(int signal) {
 
 // CyberDay introduction screen
 typedef struct {
+    // Window position
+    int windowWidth;
+    int windowHeight;
+
     sf::Text yChar;
     sf::Text aChar;
     sf::Text DChar;
@@ -277,6 +347,10 @@ typedef struct {
 
     void alignCenter(sf::Text text) {
         text.setOrigin(text.getLocalBounds().width / 2.0f, text.getLocalBounds().height / 2.0f);
+    };
+
+    void setInitialPosition(sf::Text text) {
+        
     };
 
     void initializeAnimation() {
@@ -303,14 +377,47 @@ int main(int argc, char **argv) {
     sigIntHandler.sa_flags = 0;
 
     sigaction(SIGINT, &sigIntHandler, NULL);
+
+    // 1
     std::signal(SIGABRT, errorHandler);
     std::signal(SIGALRM, errorHandler);
+    std::signal(SIGBUS, errorHandler);
+    std::signal(SIGFPE, errorHandler);
+
+    std::signal(SIGHUP, errorHandler);
+    std::signal(SIGILL, errorHandler);
+    std::signal(SIGINT, errorHandler);
+    std::signal(SIGKILL, errorHandler);
+
+    // 2
+    std::signal(SIGPIPE, errorHandler);
+    // std::signal(SIGPOLL, errorHandler);
+    std::signal(SIGPROF, errorHandler);
+    std::signal(SIGQUIT, errorHandler);
+
+    std::signal(SIGSEGV, errorHandler);
+    std::signal(SIGSYS, errorHandler);
+    std::signal(SIGTERM, errorHandler);
+    std::signal(SIGTRAP, errorHandler);
+
+    // 3
+    std::signal(SIGUSR1, errorHandler);
+    std::signal(SIGUSR2, errorHandler);
+    std::signal(SIGVTALRM, errorHandler);
+    std::signal(SIGXCPU, errorHandler);
+    std::signal(SIGXFSZ, errorHandler);
 
     context->snake_game_class = new SnakeSenzia;
     context->snake_game_core = new SnakeSenzia::Core;
     context->snake_game_timer = new SnakeSenzia::Timer;
     context->snake_game_log_system = new SnakeSenzia::Logging;
     context->snake_game_core_filesystem = new SnakeSenzia::Core::FileSystem;
+
+    gui_config = new WindowGUIConfig;
+
+    // Initial window configurations
+    gui_config->width = 1280;
+    gui_config->height = 720;
 
     std::locale old_locale;  // current locale
     setlocale(LC_ALL, "en_US.UTF-8");
@@ -325,7 +432,7 @@ int main(int argc, char **argv) {
     }
 
     // Title of Menu game
-    sf::Text *title = new sf::Text("Snake Senzia", font, 48);
+    sf::Text *title = new sf::Text("Snake Senzia", font, 64);
 
     title->setPosition(200, 200);
     title->setOutlineColor(sf::Color::White);

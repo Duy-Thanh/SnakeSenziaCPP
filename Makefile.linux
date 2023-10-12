@@ -1,0 +1,30 @@
+#
+# Makefile - Command for 'make' build system
+#
+# This file is a part of SnakeSenzia project
+# 
+# Copyright (C) 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023 CyberDay Studios. All right reserved.
+# Author: Nguyen Duy Thanh (segfault.e404)
+#
+
+CC=g++
+CC_VERSION=$(shell $(CC) --version | grep version)
+ROOT_DIR=$(PWD)
+BUILD_DIR=$(ROOT_DIR)/build
+SRC_FILE=snake.cpp
+SFML_ROOT_DIR=$(ROOT_DIR)/SFML
+SFML_SRC_DIR=$(SFML_ROOT_DIR)
+SFML_BUILD_DIR=$(SFML_ROOT_DIR)/build-sfml
+SFML_INCLUDE_DIR=$(SFML_ROOT_DIR)/include
+SFML_LIB_DIR=$(SFML_BUILD_DIR)/lib
+INCLUDE_DIR=$(ROOT_DIR) -I$(SFML_INCLUDE_DIR)
+
+LIBS=-L$(SFML_LIB_DIR) -lsfml-graphics -lsfml-window -lsfml-audio -lsfml-network -lsfml-system
+
+.PHONY: all clean always
+
+always:
+	@mkdir -p $(BUILD_DIR)
+
+all:
+	$(CC) -std=c++17 -I$(INCLUDE_DIR) $(SRC_FILE) $(LIBS) -o $(BUILD_DIR)/SnakeSenzia

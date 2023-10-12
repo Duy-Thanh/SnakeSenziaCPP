@@ -30,22 +30,64 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
 
+#if _WIN32
+#include <windows.h>
+#else
+#include <CoreGraphics/CGDisplayConfiguration.h>
+#endif
+
 const wchar_t *WCHAR_UNICODE_COPYRIGHT_SYMBOL = L"\u00A9";
 
 // Define for error message
-const std::string ABRT_MSG = "Process abort signal handled";
-const std::string ALARM_MSG = "Alarm clock";
-const std::string BUS_MSG = "Access to an undefined portition of a memory object";
-const std::string FPE_MSG = "Erroneous arithmetic operation";
-const std::string HUP_MSG = "Hangup";
-const std::string ILL_MSG = "Illegal instruction";
-const std::string INT_MSG = "Terminal interrupt signal";
-const std::string KILL_MSG = "Kill (cannot be caught or ignored)";
-const std::string PIPE_MSG = "Write on a pipe with no one to read it";
-const std::string POLL_MSG1 = "Pollable event";
+const std::string ABRT_MSG = ": Process abort signal handled";
+const std::string ALARM_MSG = ": Alarm clock";
+const std::string BUS_MSG = ": Access to an undefined portition of a memory object";
+const std::string FPE_MSG = ": Erroneous arithmetic operation";
+const std::string HUP_MSG = ": Hangup";
+const std::string ILL_MSG = ": Illegal instruction";
+const std::string INT_MSG = ": Terminal interrupt signal";
+const std::string KILL_MSG = ": Kill (cannot be caught or ignored)";
+const std::string PIPE_MSG = ": Write on a pipe with no one to read it";
+const std::string POLL_MSG1 = ": Pollable event";
+const std::string PROF_MSG = ": Profiling timer expired";
+const std::string QUIT_MSG = ": Terminal quit signal";
+const std::string SEGV_MSG = ": Invalid memory reference";
+const std::string SYS_MSG = ": Bad system call";
+const std::string TERM_MSG = ": Termination signal";
+const std::string TRAP_MSG = ": Trace/breakpoint trap";
+const std::string USR1_MSG = ": Signal not implemented";
+const std::string USR2_MSG = ": Signal not implemented";
+const std::string VTALRM_MSG = ": Virtual timer expired";
+const std::string XCPU_MSG = ": CPU time limit exceeded";
+const std::string XFSZ_MSG = ": File size limit exceeded";
+
+// Define custom data type
+#define ARRAY_POINTER(name, id_type)                id_type *name
+#define ARRAY_INT_POINTER                           int *
+#define ARRAY_INT_PTR(name)                         int *name
+#define ALLOC_PTR(x)                                new x
+#define ALLOC_ARRAY_PTR(x, n)                       new x[n]
+#define ALLOC_STRUCT_PTR(x)                         ALLOC_PTR(x)
+#define ALLOC_STRUCT_PTR_LEGACY(x, id_type)         (id_type *)malloc(sizeof(x))
+#define REALLOC_PTR(x, n, id_type)                  (id_type *)realloc(x, (size_t)n)
+#define PTR(x, index)                               *(x + index)
+#define SET_PTR(x, index, value)                    *(x + index) = value
+#define GET_PTR(x, index)                           return *(x + index)
+#define FREE_MEMORY_LEGACY(x)                       \
+    free(x)                                         \
+    x = NULL
+
+#define FREE_MEMORY(x)                              \
+    delete x                                        \
+    x = NULL
 
 void errorHandler(int signal);
 void exitHandler(int signal);
+
+void Test() {
+    ARRAY_INT_PTR(test);
+    test = ALLOC_PTR(int);
+}
 
 class SnakeSenzia {
     public:
@@ -87,10 +129,44 @@ class SnakeSenzia::Core {
         std::string execCommand(const char* cmd);
         bool isProcessRunning(const std::string processName);
 
+        class ProgramData;
         class SoundPlayer;
         class FileSystem;
         class SnakeWindow;
         class Font;
+};
+
+class SnakeSenzia::Core::ProgramData {
+    private:
+        int windowWidth;
+        int windowHeight;
+    public:
+        void GetScreenResolution() {
+            #if _WIN32
+                this->windowWidth = (int)GetSystemMetrics(SM_CXSCREEN);
+                this->windowHeight = (int)GetSystemMetrics(SM_CYSCREEN);
+            #else
+                auto mainDisplayID = CGMainDisplayID();
+                this->windowWidth = CGDisplayPixelsWide(mainDisplayID);
+                this->windowHeight = CGDisplayPixelsHigh(mainDisplayID);
+            #endif
+        }
+
+        int GetScreenWidth() const {
+            return this->windowWidth;
+        }
+
+        int GetScreenHeight() const {
+            return this->windowHeight;
+        }
+
+        ARRAY_INT_POINTER GetScreenSize() {
+            ARRAY_INT_PTR(size) = ALLOC_ARRAY_PTR(int, 2);
+            *(size + 0) = this->windowWidth;
+            *(size + 1) = this->windowHeight;
+
+            return size;
+        }
 };
 
 class SnakeSenzia::Logging {
