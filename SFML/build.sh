@@ -180,41 +180,6 @@ build_linux() {
         cd ..
 }
 
-build_linux() {
-        mkdir -p build-x86_64
-        cd build-x86_64
-        cmake ..
-        make VERBOSE=1 -j2
-        cd ..
-
-        mkdir -p build-sfml
-        cd build-sfml
-        mkdir lib
-        cd lib
-
-        echo
-        echo "Now installing section will begin shortly. You may be required to enter 'sudo' password."
-        echo
-
-        # Generating install script
-        rm -rf install.sh
-
-        echo "#! /bin/bash" >> $PWD/install.sh
-        echo "#" >> $PWD/install.sh
-        echo "# install.sh - Auto-generated install script. Do not edit!" >> $PWD/install.sh
-        echo "#" >> $PWD/install.sh
-        echo "" >> $PWD/install.sh
-        echo "echo \"Installing libraries.....\"" >> $PWD/install.sh
-        echo "" >> $PWD/install.sh
-        echo "sudo cp *.* /usr/local/lib" >> $PWD/install.sh
-        echo "" >> $PWD/install.sh
-        echo "" >> $PWD/install.sh
-
-        chmod +x $PWD/install.sh && ./install.sh
-
-        cd ..
-}
-
 case $OS in
         "macOS")
                 build_macos
