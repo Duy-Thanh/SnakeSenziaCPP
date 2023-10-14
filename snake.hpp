@@ -17,7 +17,11 @@
 #include <condition_variable>
 #include <future>
 #include <cstdlib>
+
+#if defined(__linux__) || defined(__APPLE__)
 #include <sys/ioctl.h>
+#endif
+
 #include <unistd.h>
 #include <csignal>
 #include <atomic>
@@ -25,6 +29,7 @@
 #include <map>
 #include <typeinfo>
 #include <mutex>
+#include <iomanip>
 
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
@@ -32,8 +37,9 @@
 
 #if _WIN32
 #include <windows.h>
-#else
+#elif __APPLE__
 #include <CoreGraphics/CGDisplayConfiguration.h>
+#include <mach-o/dyld.h>
 #endif
 
 const wchar_t *WCHAR_UNICODE_COPYRIGHT_SYMBOL = L"\u00A9";
@@ -84,10 +90,14 @@ const std::string XFSZ_MSG = ": File size limit exceeded";
 void errorHandler(int signal);
 void exitHandler(int signal);
 
-void Test() {
-    ARRAY_INT_PTR(test);
-    test = ALLOC_PTR(int);
-}
+#ifdef DEBUG
+#if DEBUG 1
+    void Test() {
+        ARRAY_INT_PTR(test);
+        test = ALLOC_PTR(int);
+    }
+#endif
+#endif
 
 class SnakeSenzia {
     public:
@@ -96,6 +106,7 @@ class SnakeSenzia {
         class Logging;
         class Timer;
         class Font;
+        class MenuObject;
 };
 
 class SnakeSenzia::Core {
@@ -136,6 +147,116 @@ class SnakeSenzia::Core {
         class Font;
 };
 
+class SnakeSenzia::MenuObject {
+    public:
+        class Button;
+};
+
+class SnakeSenzia::MenuObject::Button : public sf::Drawable {
+    private:
+        sf::RectangleShape* background;
+        sf::Text* text;
+        void (* clickRunner)();
+    public:
+        Button(const std::string& label, const sf::Font& font, 
+                const sf::Vector2f& position, const sf::Vector2f& size) {
+            this->background = new sf::RectangleShape(size);
+            this->text = new sf::Text(label, font, 64);
+
+            this->background->setSize(size);
+            this->background->setPosition(position);
+            this->background->setFillColor(sf::Color(100, 40, 0));
+            this->background->setOutlineThickness(2.0f);
+            this->background->setOutlineColor(sf::Color(255, 248, 220));
+
+            this->text->setString(label);
+            this->text->setFont(font);
+            this->text->setStyle(sf::Text::Bold);
+
+            sf::FloatRect textBounds = this->text->getLocalBounds();
+            this->text->setOrigin(textBounds.left + textBounds.width / 2.0f, 
+                                 textBounds.top + textBounds.height / 2.0f);
+            this->text->setPosition(position + size / 2.0f);
+        }
+
+        sf::RectangleShape *getBackground() {
+            return this->background;
+        }
+
+        sf::Text *getText() {
+            return this->text;
+        }
+
+        void setText(sf::Text *txt) {
+            this->text = txt;
+        }
+
+        void alignToCenter(float guiWidth, float guiHeight, float addBuf = 0.0f) {
+            // Center background
+            sf::FloatRect bounds = this->background->getGlobalBounds();
+            float posX = ((guiWidth - bounds.width) / 2.0f);
+            float posY = ((guiHeight - bounds.height) / 2.0f) + addBuf;
+            this->background->setPosition(posX, posY);
+
+            // Calculate the position for the text
+            sf::FloatRect textBounds = this->text->getLocalBounds();
+            float textPosX = (posX + bounds.width * 0.83f - textBounds.width * 0.72f);
+            float textPosY = (posY + bounds.height * 0.72f - textBounds.height * 0.72f);
+            this->text->setPosition(textPosX, textPosY);
+        }
+
+        void draw(sf::RenderTarget& target, sf::RenderStates states) const override {
+            target.draw(* this->background, states);
+            target.draw(* this->text, states);
+        }
+
+        void setClickRunner(void (* clickRunnerAction)()) {
+            this->clickRunner = clickRunnerAction;
+        }
+
+        void runClickRunner() {
+            if (this->clickRunner != nullptr) {
+                this->clickRunner();
+            }
+        }
+
+        void isMouseHover(const sf::Vector2f& mousePos, bool& isHover) {
+            sf::FloatRect buttonBounds = this->background->getGlobalBounds();
+            buttonBounds.top += 50;
+
+            bool isOver = buttonBounds.contains(mousePos);
+
+            if (isOver) {
+                // Change the button's fill color to make it lighter when the mouse is over
+                this->background->setFillColor(sf::Color(150, 90, 30));
+            } else {
+                // Restore the original fill color
+                this->background->setFillColor(sf::Color(100, 40, 0));
+            }
+
+            isHover = isOver;
+        }
+
+        void handleClick(const sf::Vector2f& mousePos, bool& isClicked) {
+            bool isHover = false;
+            isMouseHover(mousePos, isHover);
+            if (isHover) {
+                // Handle the button click event here
+                // You can change the button's appearance, trigger an action, etc.
+                
+                // Change the button's fill color to make it darker when clicked
+                this->background->setFillColor(sf::Color(80, 20, 0));
+
+                isClicked = true; // The click was handled by the button
+                if (this->clickRunner != nullptr) {
+                    runClickRunner();
+                }
+            }
+
+            isClicked = false; // The click was not on the button
+        }
+};
+
 class SnakeSenzia::Core::ProgramData {
     private:
         int windowWidth;
@@ -145,10 +266,22 @@ class SnakeSenzia::Core::ProgramData {
             #if _WIN32
                 this->windowWidth = (int)GetSystemMetrics(SM_CXSCREEN);
                 this->windowHeight = (int)GetSystemMetrics(SM_CYSCREEN);
-            #else
+            #elif __APPLE__
                 auto mainDisplayID = CGMainDisplayID();
                 this->windowWidth = CGDisplayPixelsWide(mainDisplayID);
                 this->windowHeight = CGDisplayPixelsHigh(mainDisplayID);
+            #else
+                // Linux using X11
+                Display *display = XOpenDisplay(nullptr);
+                if (display) {
+                    Screen *screen = DefaultScreenOfDisplay(display);
+                    this->windowWidth = WidthOfScreen(screen);
+                    this->windowHeight = HeightOfScreen(screen);
+                    XCloseDisplay(display);
+                } else {
+                    std::cout << "X11 is not available." << std::endl;
+                    abort();
+                }
             #endif
         }
 
@@ -188,6 +321,26 @@ class SnakeSenzia::Core::FileSystem {
 
         bool isFileExists(std::string filePath) {
             return std::ifstream(filePath).good();
+        }
+
+        bool readFileToMemory(const std::string& filePath, std::vector<char>& addr) {
+            std::ifstream file(filePath, std::ios::binary);
+
+            if (!isFileExists(filePath)) {
+                std::cout << filePath << " is not found." << std::endl;
+                abort();
+            }
+
+            file.seekg(0, std::ios::end);
+            std::streampos fileSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+
+            addr.resize(static_cast<size_t>(fileSize));
+            file.read(addr.data(), fileSize);
+
+            file.close();
+
+            return true;
         }
 };
 
@@ -329,20 +482,28 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
         uint32_t Style;
         sf::RenderWindow *window;
         sf::Event event;
-        std::mutex windowMutex;
-        sf::Drawable *objects;
-        void (* animationFunc)();
+        std::vector<sf::Drawable *> objects;
+        std::vector<sf::Drawable *> defaultObjects;
+
+        // Handler
+        std::vector<void (*)()> animationFunction;
+        std::vector<void (*)()> clickHandler;
+        std::vector<void (*)()> customHandler;
+        std::vector<void (*)()> keyboardPressHandler;
+
+        void (* upHandle)();
+        void (* downHandle)();
+        void (* leftHandle)();
+        void (* rightHandle)();
     public:
         SnakeWindow(int width, int height, std::string title) :
             Width(width), Height(height), Title(title) {
-                std::string KernelDetails = std::string(execCommand("uname -s && uname -r && uname -m"));
-                std::cout << "Machine: " << KernelDetails << std::endl;
+                std::string KernelDetails = std::string(execCommand("uname -a"));
+                std::cout << "Machine details: " << KernelDetails << std::endl;
 
                 this->window = new sf::RenderWindow (
                     sf::VideoMode(this->Width, this->Height), 
-                        this->Title + 
-                        std::string(" - ") +
-                        std::string(execCommand("uname -m")) + ")"
+                        this->Title
                 );
         }
 
@@ -354,22 +515,159 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
         }
 
         void setObject(sf::Drawable *object) {
-            this->objects = object;
+            this->objects.push_back(object);
+        }
+
+        void setDefaultObject(sf::Drawable *object) {
+            this->defaultObjects.push_back(object);
+        }
+
+        void removeAllObjects() {
+            size_t i;
+
+            while (i > 0) {
+                this->objects.pop_back();
+                i = this->objects.size();
+            }
+        }
+
+        void removeObjects(int count) {
+            for (int i = this->objects.size(); i > count; i--) {
+                this->objects.pop_back();
+            }
+        }
+
+        void removeObjectFromIndexToIndex(int from, int to, bool reverse = false) {
+            if (reverse) {
+                for (int i = from; i < to; i++) {
+                    this->objects.pop_back();
+                }
+            } else {
+                for (int i = from; i > to; i--) {
+                    this->objects.pop_back();
+                }
+            }
         }
 
         void draw() {
-            if (this->objects != nullptr) {
-                this->window->draw(* this->objects);
-            } else return;
+            for (int i = 0; i < this->objects.size(); i++) {
+                if (this->objects[i] != nullptr) {
+                    this->window->draw(* this->objects[i]);
+                }
+            }
+        }
+
+        void drawDefaultObject() {
+            for (int i = 0; i < this->defaultObjects.size(); i++) {
+                if (this->defaultObjects[i] != nullptr) {
+                    this->window->draw(* this->defaultObjects[i]);
+                }
+            }
         }
 
         void setAnimation(void (* animationFunction)()) {
-            this->animationFunc = animationFunction;
+            this->animationFunction.push_back(animationFunction);
         }
 
         void runAnimation() {
-            if (this->animationFunc) {
-                this->animationFunc();
+            for (int i = 0; i < this->animationFunction.size(); i++) {
+                this->animationFunction[i]();
+            }
+        }
+
+        void deleteAllAnim() {
+            for (int i = 0; i < this->animationFunction.size(); i++) {
+                this->animationFunction.pop_back();
+            }
+        }
+
+        void setClickedHandler(void (* clicked)()) {
+            this->clickHandler.push_back(clicked);
+        }
+
+        void runClickedHandler() {
+            for (int i = 0; i < this->clickHandler.size(); i++) {
+                this->clickHandler[i]();
+            }
+        }
+
+        void setKeyboardHandler(void (* keyPressed)()) {
+            this->keyboardPressHandler.push_back(keyPressed);
+        }
+
+        void runKeyboardHandler() {
+            for (int i = 0; i < this->keyboardPressHandler.size(); i++) {
+                this->keyboardPressHandler[i]();
+            }
+        }
+
+        void deleteAllClickedHandler() {
+            for (int i = 0; i < this->clickHandler.size(); i++) {
+                this->clickHandler.pop_back();
+            }
+        }
+
+        void setCustomHandler(void (* cHandler)()) {
+            this->customHandler.push_back(cHandler);
+        }
+
+        void runCustomHandler() {
+            for (int i = 0; i < this->customHandler.size(); i++) {
+                this->customHandler[i]();
+            }
+        }
+
+        void deleteAllCustomHandler() {
+            for (int i = 0; i < this->customHandler.size(); i++) {
+                this->customHandler.pop_back();
+            }
+        }
+
+        void setFrameRate(unsigned int frameRate) {
+            this->window->setFramerateLimit(frameRate);
+        }
+
+        void enableVSync(bool isEnabled) {
+            this->window->setVerticalSyncEnabled(isEnabled);
+        }
+
+        void registerUpEvent(void (* upHandler)()) {
+            this->upHandle = upHandler;
+        }
+
+        void runUpEvent() {
+            if (this->upHandle != nullptr) {
+                this->upHandle();
+            }
+        }
+
+        void registerDownEvent(void (* downHandler)()) {
+            this->downHandle = downHandler;
+        }
+
+        void runDownEvent() {
+            if (this->downHandle != nullptr) {
+                this->downHandle();
+            }
+        }
+
+        void registerLeftEvent(void (* leftHandler)()) {
+            this->leftHandle = leftHandler;
+        }
+
+        void runLeftEvent() {
+            if (this->leftHandle != nullptr) {
+                this->leftHandle();
+            }
+        }
+
+        void registerRightEvent(void (* rightHandler)()) {
+            this->rightHandle = rightHandler;
+        }
+
+        void runRightEvent() {
+            if (this->rightHandle != nullptr) {
+                this->rightHandle();
             }
         }
 
@@ -382,10 +680,35 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
                         if (this->event.type == sf::Event::Closed) {
                             this->window->close();
                         }
+
+                        if (this->event.type == sf::Event::KeyPressed) {
+                            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
+                                runUpEvent();
+                            }
+                            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
+                                runDownEvent();
+                            }
+                            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left)) {
+                                runLeftEvent();
+                            }
+                            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) {
+                                runRightEvent();
+                            }
+                        }
+
+                        if (this->event.type == sf::Event::MouseButtonPressed) {
+                            runClickedHandler();
+                        }
                     }
 
                     // draw here
+                    this->window->clear(sf::Color::Black);
+
                     draw();
+                    drawDefaultObject();
+                    runAnimation();
+                    // Run custom handler here
+                    runCustomHandler();
 
                     this->window->display();
                 }
@@ -466,11 +789,5 @@ class WindowHandler : public SnakeSenzia::Core::SnakeWindow,
             // Step 2: Setting variables
             this->ObjectParsed = this->dataParse->ObjectParser;
             this->ObjectCount = this->dataParse->elementCount;
-        }
-
-        void transfer(Object *object) {
-            if (typeid(object) == typeid(sf::Text)) {
-
-            }
         }
 };
