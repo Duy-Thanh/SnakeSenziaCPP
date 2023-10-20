@@ -4,6 +4,9 @@
 #include <AudioPlayer.cpp>
 #endif
 
+// Uncomment this when release
+// #define RELEASE
+
 #ifndef RELEASE
     #define DEBUG
     #define DEBUG_ENABLED       (1 << 0)
@@ -11,6 +14,13 @@
     #undef DEBUG
     #undef DEBUG_ENABLED
 #endif
+
+// Sound
+extern unsigned char space1_mp3[];
+
+// Font
+extern unsigned char ARCADECLASSIC_TTF[];
+extern unsigned char Arial_ttf[];
 
 // public variables
 typedef struct {
@@ -33,6 +43,7 @@ typedef struct {
     SnakeSenzia::Core::SnakeWindow *window;
     WindowGUIConfig *window_config = NULL;
     GameData *game_data = NULL;
+    INIParser *iniParser = NULL;
 } GameContext;
 
 // I know public variable is evil, but we need GameContext as pointer to access to the function
@@ -153,6 +164,7 @@ void SnakeSenzia::Logging::printLogWString(std::wstring TAG, std::wstring descri
  * Core section
 */
 // Core application
+
 std::string SnakeSenzia::Core::FileSystem::GetCurrentDirectory() {
     #if defined(_WIN32)
         char path[MAX_PATH];
@@ -397,6 +409,31 @@ void errorHandler(int signal) {
     exit(0);
 }
 
+float retrieveGameplaySpeed() {
+    float gamePlaySpeed;
+
+    if  (
+            context->snake_game_core_filesystem->isFileExists(
+                game_data->CurrentExecutablePath + "/game_data.ini"
+            )
+        ) {
+        // Load ini file
+        context->iniParser->Load(game_data->CurrentExecutablePath + "/game_data.ini");
+        std::string GPSpeed = context->iniParser->GetValue("Config", "gameplay_speed");
+
+        if (GPSpeed == "Slow") {
+            return (float)0.05f;
+        } else if (GPSpeed == "Normal") {
+            return (float)0.3f;
+        } else if (GPSpeed == "Fast") {
+            return (float)1.0f;
+        }
+    } 
+}
+
+/*
+    Actually gameplay begin here
+*/
 struct MousePosition {
     int x, y;
 };
@@ -410,24 +447,19 @@ bool exitBtnClicked = false;
 bool playBtnClicked = false;
 
 bool isPlaying = false;
+bool isResetGame = false;
 
 // CyberDay introduction screen
-typedef struct {
+struct ScreenController {
     struct DefaultScreen {
         sf::Text* msg;
         sf::Text* msg2;
         sf::Font fontDef;
 
-        std::vector<char> fontDefault;
-
         void initialize() {
             mousePos = new MousePosition;
 
-            context->snake_game_core_filesystem->readFileToMemory(
-                game_data->ResourceDirectory + "Arial.ttf", fontDefault
-            );
-
-            if (!fontDef.loadFromMemory(fontDefault.data(), fontDefault.size())) {
+            if (!fontDef.loadFromMemory(Arial_ttf, sizeof(Arial_ttf))) {
                 std::cout << "Failed to load font file from memory." << std::endl;
                 abort();
             }
@@ -599,6 +631,12 @@ typedef struct {
         sf::Text *title;
         sf::Font font;
         std::vector<sf::CircleShape *> stars;
+        sf::Music music;
+
+        bool paused = false;
+        bool stopped = false;
+
+        bool requestStop = false;
 
         // Menu buttons
         SnakeSenzia::MenuObject::Button *playButton;
@@ -607,9 +645,6 @@ typedef struct {
 
         // Text position
         int posX, posY;
-
-        // Memory pool
-        std::vector<char> data;
 
         void alignTitleCenter(sf::Text *text) {
             sf::FloatRect textBounds = text->getLocalBounds();
@@ -621,12 +656,8 @@ typedef struct {
         };
 
         void initialize() {
-            context->snake_game_core_filesystem->readFileToMemory(
-                game_data->ResourceDirectory + "ARCADECLASSIC.TTF", data
-            );
-
             // Create a font object (you should load your own font)
-            if (!font.loadFromMemory(data.data(), data.size())) {
+            if (!font.loadFromMemory(ARCADECLASSIC_TTF, sizeof(ARCADECLASSIC_TTF))) {
                 std::cout << "Failed to load required resource" << std::endl;
                 abort();
             }
@@ -658,25 +689,47 @@ typedef struct {
                 );
 
             exitButton->alignToCenter(gui_config->width, gui_config->height, 50.0f);
+
+            if (music.openFromMemory(space1_mp3, sizeof(space1_mp3))) {
+                music.setLoop(true);
+                // Read from configurations
+                if (context->snake_game_core_filesystem->isFileExists(game_data->ResourceDirectory + "/game_data.ini")) {
+                    context->iniParser->Load(game_data->ResourceDirectory + "/game_data.ini");
+                    int volumeBg = std::atoi(context->iniParser->GetValue("Config", "menu_bg_music_volume").c_str());
+
+                    music.setVolume(volumeBg);
+                } else {
+                    music.setVolume(80);
+                }
+
+                music.play();
+            }
         };
 
         static void exitRunner() {
             #ifdef DEBUG
-            #if DEBUG 1
+            #if DEBUG_ENABLED
                 std::cout << "Exit button pressed" << std::endl;
             #endif
             #endif
 
-            // abort application
-            abort();
+            // exit application
+            exit(0);
+        };
+
+        void stopMusic() {
+            if (music.getStatus() == sf::Music::Playing) {
+                music.stop();
+            }
         };
 
         static void playRunner() {
             #ifdef DEBUG
-            #if DEBUG 1
+            #if DEBUG_ENABLED
                 std::cout << "Playing" << std::endl;
             #endif
             #endif
+
             context->window->deleteAllAnim();
             context->window->removeAllObjects();
             context->window->deleteAllClickedHandler();
@@ -745,6 +798,7 @@ typedef struct {
         sf::RectangleShape *bottomBox;
         sf::Font font;
         sf::Text *score;
+        sf::Text *maxScore;
         sf::Vector2f *segmentSize;
         sf::Color *color;
         std::vector<sf::RectangleShape *> snake;
@@ -752,14 +806,85 @@ typedef struct {
         sf::RectangleShape *segment;
         sf::Vector2f *direction;
         sf::RectangleShape *food;
+        sf::Music music_background;
+
+        // Memory pool
+        std::vector<char> music_bg_memory;
 
         bool isMovingUp = false;
         bool isMovingDown = false;
         bool isMovingLeft = false;
         bool isMovingRight = false;
 
-        // Memory pool
-        std::vector<char> data;
+        // Background
+        sf::Color *dustColor;
+        sf::RectangleShape *dustCell;
+
+        sf::RectangleShape *grassRect;
+
+        std::vector<sf::RectangleShape *> dustCells;
+
+        std::default_random_engine generator;
+
+        // Score variables
+        unsigned long long int baseScore = 2;
+        unsigned long long int currentScore = 0;
+        
+        // Food and snake variable
+        bool foodEatenThisFrame = false;
+        int currentIndex = 0;
+
+        // 
+        // To create dust and grass more realistic, we will use Perlin noise algorithm
+        // References: https://en.wikipedia.org/wiki/Perlin_noise
+        //
+
+        // TODO: Draw grass
+        void drawGrass() {
+            sf::Color grassColor(0, 128, 0);
+        };
+
+        void drawDustBackground() {
+            dustColor = new sf::Color(150, 90, 30);
+
+            // Define a color gradient or palette
+            sf::Color colors[] = {
+                sf::Color(139, 69, 19),  // Brown
+                sf::Color(244, 164, 96), // Lighter Brown
+                sf::Color(210, 105, 30), // Sienna
+                sf::Color(139, 69, 19)   // Back to Brown
+            };
+
+            int cellSize = 10;
+            int numRows = context->window->getSizeY() / cellSize;
+            int numCols = context->window->getSizeX() / cellSize;
+
+            std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
+
+            for (int row = 0; row < numRows; row++) {
+                for (int col = 0; col < numCols; col++) {
+                    dustCell = new sf::RectangleShape(sf::Vector2f(cellSize, cellSize));
+                    dustCell->setPosition(col * cellSize, row * cellSize);
+
+                    float red = 150 + distribution(generator) * 50;
+                    float green = 90 + distribution(generator) * 40;
+                    float blue = 30 + distribution(generator) * 20;
+
+                    float noiseValue = perlin(0.1f * col, 0.1f * row);  // Adjust the scale as needed
+                    float normalizedValue = 0.5f + 0.5f * noiseValue;  // Normalize to [0, 1]
+
+                    // Adjust the depth of the color by squaring the normalized value
+                    normalizedValue = normalizedValue * normalizedValue;
+
+                    int dustValue = static_cast<int>(normalizedValue * 128);  // Scale to [0, 128]
+                    sf::Color dustColor(139 + dustValue, 69 + dustValue, 19 + dustValue);
+
+                    dustCell->setFillColor(dustColor);
+
+                    dustCells.push_back(dustCell);
+                }
+            }
+        };
 
         void placeFood() {
             sf::Vector2f foodPos;
@@ -795,14 +920,37 @@ typedef struct {
             isMovingLeft = false;
             isMovingRight = false;
 
+            int *colorSnake;
+            int *colorFood;
+
+            if (context->snake_game_core_filesystem->isFileExists(game_data->CurrentExecutablePath + "/game_data.ini")) {
+                context->iniParser->Load(game_data->CurrentExecutablePath + "/game_data.ini");
+                std::string snake_color = context->iniParser->GetValue("Config", "snake_color");
+
+                colorSnake = context->snake_game_core->parseColor(snake_color);
+
+                std::string food_color = context->iniParser->GetValue("Config", "food_color");
+
+                colorFood = context->snake_game_core->parseColor(food_color);
+            }
+
             segmentSize = new sf::Vector2f(20, 20);
             direction = new sf::Vector2f(1, 0);
-            color = new sf::Color(sf::Color::Red);
+
+            sf::Color *snake_color = new sf::Color();
+
+            snake_color->r = *(colorSnake + 0);
+            snake_color->g = *(colorSnake + 1);
+            snake_color->b = *(colorSnake + 2);
+
+            color = new sf::Color(* snake_color);
             headPos = new sf::Vector2f(400, 300);
 
             bottomBox = new sf::RectangleShape(sf::Vector2f(gui_config->width, 40));
             bottomBox->setFillColor(sf::Color::Transparent);
             bottomBox->setOutlineColor(sf::Color::White);
+
+            drawDustBackground();
 
             for (int i = 0; i < 4; i++) {
                 segment = new sf::RectangleShape(* segmentSize);
@@ -811,12 +959,8 @@ typedef struct {
                 snake.push_back(segment);
             }
 
-            context->snake_game_core_filesystem->readFileToMemory(
-                game_data->ResourceDirectory + "ARCADECLASSIC.TTF", data
-            );
-
             // Create a font object (you should load your own font)
-            if (!font.loadFromMemory(data.data(), data.size())) {
+            if (!font.loadFromMemory(ARCADECLASSIC_TTF, sizeof(ARCADECLASSIC_TTF))) {
                 std::cout << "Failed to load required resource" << std::endl;
                 abort();
             }
@@ -828,18 +972,65 @@ typedef struct {
             score->setOrigin(textBounds.left + textBounds.width / 2.0f, textBounds.top + textBounds.height / 2.0f);
             score->setPosition(gui_config->width / 2.0f, bottomBox->getPosition().y + bottomBox->getSize().y / 2.0f);
             
+            maxScore = new sf::Text("BEST SCORE 0000000000000000", font, 36);
+            maxScore->setFillColor(sf::Color::White);
+            
+            sf::FloatRect maxScoreBounds = maxScore->getLocalBounds();
+            maxScore->setOrigin(maxScoreBounds.left + maxScoreBounds.width / 2.0f,
+                                maxScoreBounds.top + maxScoreBounds.height / 2.0f);
+            maxScore->setPosition(gui_config->width / 2.0f,
+                                 bottomBox->getPosition().y + bottomBox->getSize().y + textBounds.getPosition().y + textBounds.getSize().y / 2.0f + 2.0f);
+            
+            // Update max score
+            std::stringstream ss_max_score;
+            if (context->snake_game_core_filesystem->isFileExists(game_data->CurrentExecutablePath + "/game_data.ini")) {
+                context->iniParser->Load(game_data->CurrentExecutablePath + "/game_data.ini");
+                std::string maxScoreString = context->iniParser->GetValue("User", "MaxScore");
+
+                int maxScoreFromUserData = std::atoi(maxScoreString.c_str());
+                ss_max_score << "BEST SCORE " << std::setw(16) << std::setfill('0') << maxScoreFromUserData;
+
+                maxScore->setString(ss_max_score.str());
+            }
+
             float bottomY = gui_config->height;
 
             // Set the position of the bottomBox
-            bottomBox->setPosition(0, bottomY);
+            bottomBox->setPosition(0, gui_config->height);
 
             food = new sf::RectangleShape(*segmentSize);
-            food->setFillColor(sf::Color::Green); // You can set the color you prefer
-            placeFood(); // Place the initial food
-        };
 
-        unsigned long long int baseScore = 2;
-        unsigned long long int currentScore = 0;
+            sf::Color *food_color1 = new sf::Color();
+
+            food_color1->r = *(colorFood + 0);
+            food_color1->g = *(colorFood + 1);
+            food_color1->b = *(colorFood + 2);
+
+            food->setFillColor(* food_color1); // You can set the color you prefer
+            placeFood(); // Place the initial food
+
+            context->snake_game_core_filesystem->readFileToMemory(
+                game_data->ResourceDirectory + "space2.mp3", music_bg_memory
+            );
+
+            if (music_background.getStatus() != sf::Sound::Playing) {
+                if (music_background.openFromMemory(music_bg_memory.data(), music_bg_memory.size())) {
+                    music_background.setLoop(true);
+
+                    // Read from configurations
+                    if (context->snake_game_core_filesystem->isFileExists(game_data->ResourceDirectory + "/game_data.ini")) {
+                        context->iniParser->Load(game_data->ResourceDirectory + "/game_data.ini");
+                        int volumeBg = std::atoi(context->iniParser->GetValue("Config", "player_bg_music_volume").c_str());
+
+                        music_background.setVolume(volumeBg);
+                    } else {
+                        music_background.setVolume(80);
+                    }
+
+                    music_background.play();
+                }
+            } // else keep it play
+        };
 
         void updateScore() {
             currentScore += std::pow(baseScore, 2);
@@ -850,6 +1041,21 @@ typedef struct {
             score->setString(ss.str());
 
             baseScore += 1;
+
+            if (context->snake_game_core_filesystem->isFileExists(game_data->CurrentExecutablePath + "/game_data.ini")) {
+                context->iniParser->Load(game_data->CurrentExecutablePath + "/game_data.ini");
+                int maxScoreInt = std::atoi(context->iniParser->GetValue("User", "MaxScore").c_str());
+
+                if (currentScore > maxScoreInt) {
+                    context->iniParser->SetValue("User", "MaxScore", std::to_string(currentScore));
+                    context->iniParser->Save(game_data->CurrentExecutablePath + "/game_data.ini");
+                    int maxScoreUpdated = std::atoi(context->iniParser->GetValue("User", "MaxScore").c_str());
+
+                    std::stringstream max_score_ss;
+                    max_score_ss << "BEST SCORE " << std::setw(16) << std::setfill('0') << currentScore;
+                    maxScore->setString(max_score_ss.str());
+                }
+            }
         };
         
         void upEvent() {
@@ -884,9 +1090,36 @@ typedef struct {
             }
         };
 
-        bool foodEatenThisFrame = false;
+        void eatFood() {
+            // Clone the last segment to create a new segment
+            sf::RectangleShape* lastSegment = snake.back();
+            sf::RectangleShape* newSegment = new sf::RectangleShape(*lastSegment); // Clone
+
+            // Set the position for the new segment
+            sf::Vector2f newPosition(lastSegment->getPosition().x - segmentSize->x, lastSegment->getPosition().y);
+            newSegment->setPosition(newPosition);
+
+            // Set the color for the new segment
+            newSegment->setFillColor(*color);
+
+            // Add the new segment to the end of the snake vector
+            snake.push_back(newSegment);
+            
+            drawSnake();
+
+            placeFood();
+        };
+
+        void drawSnake() {
+            for (int i = 0; i < snake.size(); ++i) {
+                context->window->setObject(snake[i]);
+            }
+        };
 
         void update() {
+            // Control speed of the snake
+            float deltaTime = retrieveGameplaySpeed() ? retrieveGameplaySpeed() : 0.3f;
+
             foodEatenThisFrame = false;  // Reset the flag
             if (isMovingLeft) {
                 *direction = sf::Vector2f(-1, 0);
@@ -896,13 +1129,13 @@ typedef struct {
                 *direction = sf::Vector2f(0, -1);
             } else if (isMovingDown) {
                 *direction = sf::Vector2f(0, 1);
-            }  
+            }
 
             // Calculate the new position for the head based on the direction
             sf::Vector2f newHeadPosition = snake[0]->getPosition() + 
                                             sf::Vector2f(
-                                                direction->x * segmentSize->x, 
-                                                direction->y * segmentSize->y
+                                                direction->x * segmentSize->x * deltaTime, 
+                                                direction->y * segmentSize->y * deltaTime
                                             );
 
             // Check if the snake has gone out of the screen boundaries
@@ -920,6 +1153,14 @@ typedef struct {
 
             snake[0]->setPosition(newHeadPosition);
 
+            // Check for self-collision
+            for (int i = 1; i < snake.size(); i++) {
+                if (newHeadPosition == snake[i]->getPosition()) {
+                    isResetGame = true;
+                    return;
+                }
+            }
+
             // Update the positions of the snake segments from tail to second segment
             for (int i = snake.size() - 1; i > 0; i--) {
                 sf::Vector2f newPosition = snake[i - 1]->getPosition();
@@ -930,31 +1171,61 @@ typedef struct {
             sf::FloatRect headsBounds = snake[0]->getGlobalBounds();
 
             if (foodBounds.intersects(headsBounds) && !foodEatenThisFrame) {
-                #ifdef DEBUG
-                #if DEBUG 1
-                    std::cout << "Food eaten" << std::endl;
-                #endif
-                #endif
-
                 foodEatenThisFrame = true;  // Set the flag to true
 
                 updateScore();
 
-                sf::RectangleShape* newSegment = new sf::RectangleShape(*segmentSize);
-                newSegment->setFillColor(*color);
-                newSegment->setPosition(snake.back()->getPosition());
-                snake.push_back(newSegment);
-
-                placeFood();
+                eatFood();
             }
         };
 
+        void resetGame() {
+            // Free the RectangleShape pointers in the vector
+            for (sf::RectangleShape* rect : snake) {
+                delete rect;
+            }
+            snake.clear();
+
+            // Free the RectangleShape pointers in the dustCells vector
+            for (sf::RectangleShape* dustCell : dustCells) {
+                delete dustCell;
+            }
+            dustCells.clear();
+
+            // No need to explicitly delete the basic data types like sf::Vector2f and sf::Color.
+            // The memory is managed automatically.
+
+            // Release memory allocated for music_background
+            music_background.stop();
+            music_bg_memory.clear();
+
+            isMovingUp = false;
+            isMovingDown = false;
+            isMovingLeft = false;
+            isMovingRight = false;
+
+            // Reset score and other game state variables
+            currentScore = 0;
+            baseScore = 2;
+            foodEatenThisFrame = false;
+
+            context->window->deleteAllAnim();
+            context->window->removeAllObjects();
+            context->window->deleteAllCustomHandler();
+            context->window->deleteAllClickedHandler();
+        };
+
         void draw() {
+            for (int i = 0; i < dustCells.size(); ++i) {
+                context->window->setObject(dustCells[i]); // Draw each dust cell
+            }
+
             context->window->setObject(bottomBox);
             context->window->setObject(score);
+            context->window->setObject(maxScore);
 
-            for (int i = 0; i < snake.size(); i++) {
-                context->window->setObject(this->snake[i]);
+            for (int i = 0; i < snake.size(); ++i) {
+                context->window->setObject(snake[i]);
             }
 
             context->window->setObject(food);
@@ -966,7 +1237,7 @@ typedef struct {
     DefaultScreen *default_screen = new DefaultScreen;
     MenuScreen *menu_screen = new MenuScreen;
     PlayScreen *play_screen = new PlayScreen;
-} ScreenController;
+};
 
 // Instance for screen controller
 ScreenController *controller;
@@ -976,8 +1247,41 @@ bool isInitialized = false;
 void switchToPlayScreen() {
     if (!isInitialized) {
         if (isPlaying) {
-            context->window->setFrameRate(15);
-            context->window->enableVSync(true);
+            controller->menu_screen->stopMusic();
+            
+            controller->play_screen->initalize();
+
+            context->window->setCustomHandler([]() {
+                controller->play_screen->update();
+            });
+
+            context->window->registerUpEvent([]() {
+                controller->play_screen->upEvent();
+            });
+
+            context->window->registerDownEvent([]() {
+                controller->play_screen->downEvent();
+            });
+
+            context->window->registerLeftEvent([]() {
+                controller->play_screen->leftEvent();
+            });
+
+            context->window->registerRightEvent([]() {
+                controller->play_screen->rightEvent();
+            });
+
+            controller->play_screen->draw();
+
+            isInitialized = true;
+        } else return;
+    } else {
+        if (isResetGame) {
+            controller->play_screen->resetGame();
+            isInitialized = false;
+            isResetGame = false;
+
+            controller->menu_screen->stopMusic();
             
             controller->play_screen->initalize();
 
@@ -1059,6 +1363,7 @@ int main(int argc, char **argv) {
     context->snake_game_log_system = new SnakeSenzia::Logging;
     context->snake_game_core_filesystem = new SnakeSenzia::Core::FileSystem;
     context->snake_game_core_proc_data = new SnakeSenzia::Core::ProgramData;
+    context->iniParser = new INIParser;
 
     gui_config = new WindowGUIConfig;
     game_data = new GameData;
@@ -1066,7 +1371,7 @@ int main(int argc, char **argv) {
     context->snake_game_core_proc_data->GetScreenResolution();
 
     #ifdef DEBUG
-    #if DEBUG 1
+    #if DEBUG_ENABLED
         context->snake_game_log_system->printLog("CORE", "Screen width: " + 
             std::to_string(context->snake_game_core_proc_data->GetScreenWidth()));
         context->snake_game_log_system->printLog("CORE", "Screen height: " + 
@@ -1075,9 +1380,6 @@ int main(int argc, char **argv) {
     #endif
 
     // Initial window configurations
-    gui_config->width = context->snake_game_core_proc_data->GetScreenWidth();
-    gui_config->height = context->snake_game_core_proc_data->GetScreenHeight();
-
     game_data->CurrentExecutablePath = context->snake_game_core_filesystem->GetCurrentDirectory();
     game_data->ResourceDirectory = context->snake_game_core_filesystem->GetResourcesDirectory();
 
@@ -1085,6 +1387,33 @@ int main(int argc, char **argv) {
     setlocale(LC_ALL, "en_US.UTF-8");
 
     context->snake_game_core->initialize();
+
+    std::string generalSection = "General";
+    std::string configurations = "Config";
+    std::string userInfo = "User";
+
+    if (context->snake_game_core_filesystem->isFileExists(game_data->CurrentExecutablePath + "/game_data.ini")) {
+        context->iniParser->Load(game_data->CurrentExecutablePath + "/game_data.ini");
+        gui_config->width = std::atoi(context->iniParser->GetValue(configurations, "win_width").c_str());
+        gui_config->height = std::atoi(context->iniParser->GetValue(configurations, "win_height").c_str());
+    } else {
+        context->iniParser->SetValue(generalSection, "AppName", "SnakeSenzia");
+        context->iniParser->SetValue(generalSection, "Version", "v0.01(DEV_RELEASE)");
+        context->iniParser->SetValue(configurations, "screen_width", std::to_string(context->snake_game_core_proc_data->GetScreenWidth()));
+        context->iniParser->SetValue(configurations, "screen_height", std::to_string(context->snake_game_core_proc_data->GetScreenHeight()));
+        context->iniParser->SetValue(configurations, "win_width", std::to_string(context->snake_game_core_proc_data->GetScreenWidth()));
+        context->iniParser->SetValue(configurations, "win_height", std::to_string(context->snake_game_core_proc_data->GetScreenHeight()));
+        context->iniParser->SetValue(configurations, "menu_bg_music_volume", std::to_string(80));
+        context->iniParser->SetValue(configurations, "player_bg_music_volume", std::to_string(80));
+        context->iniParser->SetValue(configurations, "snake_color", "255, 0, 0");
+        context->iniParser->SetValue(configurations, "food_color", "0, 0, 255");
+        context->iniParser->SetValue(configurations, "gameplay_speed", "Normal");
+        context->iniParser->SetValue(userInfo, "MaxScore", std::to_string(0));
+
+        context->iniParser->Save(game_data->CurrentExecutablePath + "/game_data.ini");
+        gui_config->width = context->snake_game_core_proc_data->GetScreenWidth();
+        gui_config->height = context->snake_game_core_proc_data->GetScreenHeight();
+    }
     
     context->window = new SnakeSenzia::Core::SnakeWindow(gui_config->width, gui_config->height, "Snake Senzia (" + 
         std::string(context->snake_game_core->execCommand("arch")) + std::string(")"));
@@ -1095,13 +1424,6 @@ int main(int argc, char **argv) {
     // ScreenController API function will only focused on initialize() and draw() function,
     // so you must called them inside here!!!
     //
-    
-    // NOTE: THIS CODE IS BUG!
-    // controller->intro_screen->initialize();
-    // context->window->setAnimation([](){
-    //     controller->intro_screen->draw();
-    // });
-    // context->window->runAnimation();
 
     // Menu screen
     controller->menu_screen->initialize();
@@ -1118,6 +1440,7 @@ int main(int argc, char **argv) {
     });
 
     context->window->runAnimation();
+
     controller->menu_screen->draw();
 
     // Default screen 
@@ -1130,7 +1453,7 @@ int main(int argc, char **argv) {
     controller->default_screen->draw();
 
     // Play screen
-    context->window->setCustomHandler([]() {
+    context->window->setSwitchScreenHandler([]() {
         switchToPlayScreen();
     });
     
@@ -1142,4 +1465,3 @@ int main(int argc, char **argv) {
 
     return 0;
 }
-
