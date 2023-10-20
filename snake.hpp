@@ -1,5 +1,9 @@
 #pragma once
 
+#include <bg_sound.hpp>
+#include <font_game.hpp>
+#include <arial_font.hpp>
+
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -17,6 +21,7 @@
 #include <condition_variable>
 #include <future>
 #include <cstdlib>
+#include <random>
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/ioctl.h>
@@ -30,10 +35,12 @@
 #include <typeinfo>
 #include <mutex>
 #include <iomanip>
+#include <cmath>
 
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
+#include <SFML/Network.hpp>
 
 #if _WIN32
 #include <windows.h>
@@ -90,14 +97,146 @@ const std::string XFSZ_MSG = ": File size limit exceeded";
 void errorHandler(int signal);
 void exitHandler(int signal);
 
-#ifdef DEBUG
-#if DEBUG 1
-    void Test() {
-        ARRAY_INT_PTR(test);
-        test = ALLOC_PTR(int);
+// Perlin noise algorithm
+int perlin_variable[512];
+
+float fade(float t) {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+float lerp(float t, float a, float b) {
+    return a + t * (b - a);
+}
+
+void initializePerlin() {
+    // Initialize the permutation table (p) with some random values
+    for (int i = 0; i < 512; i++) {
+        perlin_variable[i] = rand() % 256;
     }
-#endif
-#endif
+    // Duplicate p to avoid buffer overflow
+    for (int i = 0; i < 256; i++) {
+        perlin_variable[256 + i] = perlin_variable[i];
+    }
+}
+
+float grad(int hash, float x, float y) {
+    int h = hash & 7;
+    float u = h < 4 ? x : y;
+    float v = h < 4 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2.0f * v : 2.0f * v);
+}
+
+float perlin(float x, float y) {
+    int X = (int)std::floor(x) & 255;
+    int Y = (int)std::floor(y) & 255;
+
+    x -= std::floor(x);
+    y -= std::floor(y);
+
+    float u = fade(x);
+    float v = fade(y);
+
+    int A = perlin_variable[X] + Y;
+    int B = perlin_variable[X + 1] + Y;
+
+    return lerp(v, lerp(u, grad(perlin_variable[A], x, y), grad(perlin_variable[B], x - 1, y)), lerp(u, grad(perlin_variable[A + 1], x, y - 1), grad(perlin_variable[B + 1], x - 1, y - 1)));
+}
+// End algorithms
+
+class INIParser {
+    private:
+        std::map<std::string, std::map<std::string, std::string>> data;
+
+        void ParseLine(const std::string& line, std::string& currentSection) {
+            if (line.empty() || line[0] == ';') {
+                // Skip empty lines and comments
+                return;
+            }
+
+            if (line[0] == '[' && line.back() == ']') {
+                // This is a section
+                currentSection = line.substr(1, line.size() - 2);
+            } else {
+                // This is a key-value pair
+                size_t equalPos = line.find('=');
+
+                if (equalPos != std::string::npos) {
+                    std::string key = line.substr(0, equalPos);
+                    std::string value = line.substr(equalPos + 1);
+                    data[currentSection][key] = value;
+                }
+            }
+        }
+    public:
+        void Load(const std::string& fileName) {
+            std::ifstream file(fileName);
+            if (!file.is_open()) {
+                std::cout << "Configuration read failed." << std::endl;
+                return;
+            }
+
+            std::string line, currentSection;
+
+            while (std::getline(file, line)) {
+                ParseLine(line, currentSection);
+            }
+
+            file.close();
+        }
+
+        void Save(const std::string& fileName) {
+            std::ofstream file(fileName);
+
+            if (!file.is_open()) {
+                std::cout << "Failed to create configuration file." << std::endl;
+                return;
+            }
+
+            for (const auto& section : data) {
+                file << "[" << section.first << "]\n";
+
+                for (const auto& pair : section.second) {
+                    file << pair.first << "=" << pair.second << "\n";
+                }
+
+                file << "\n";
+            }
+            
+            file.close();
+        }
+
+        std::string GetValue(const std::string& section, const std::string& key, 
+                             const std::string& defaultValue = "") {
+            if (data.find(section) != data.end() &&
+                data[section].find(key) != data[section].end()) {
+                    return data[section][key];
+            }
+
+            return defaultValue;
+        }
+
+        void SetValue(const std::string& section, const std::string& key, const std::string& value) {
+            data[section][key] = value;
+        }
+
+        void SetComment(const std::string& commentDesc = "", const std::string& fileName = "") {
+            std::ofstream file(fileName);
+
+            if (!file.is_open()) {
+                std::cerr << "File is not inside opened state or file is corrupted or file not found" << std::endl;
+                abort();
+            }
+
+            file << "; " << commentDesc << "\n";
+
+            file.close();
+        }
+};
+
+class Security {
+    public:
+        class CaesarCipher;
+};
 
 class SnakeSenzia {
     public:
@@ -105,8 +244,8 @@ class SnakeSenzia {
         class Core;
         class Logging;
         class Timer;
-        class Font;
         class MenuObject;
+        class MessageBox;
 };
 
 class SnakeSenzia::Core {
@@ -139,6 +278,24 @@ class SnakeSenzia::Core {
 
         std::string execCommand(const char* cmd);
         bool isProcessRunning(const std::string processName);
+
+        int* parseColor(const std::string& inputStr) {
+            int *color = new int[3];
+
+            std::stringstream ss(inputStr);
+
+            char comma;
+
+            if (ss >> *(color + 0) >> comma >> *(color + 1) >> comma >> *(color + 2)) {
+                return color;
+            } else {
+                *(color + 0) = 0;
+                *(color + 1) = 0;
+                *(color + 2) = 0;
+            }
+
+            return color;
+        }
 
         class ProgramData;
         class SoundPlayer;
@@ -257,6 +414,60 @@ class SnakeSenzia::MenuObject::Button : public sf::Drawable {
         }
 };
 
+class SnakeSenzia::MessageBox {
+    public:
+        class InstructionsBox;
+};
+
+class SnakeSenzia::MessageBox::InstructionsBox : public sf::Drawable {
+    private:
+        sf::RectangleShape *background;
+        sf::Text *instructionText;
+        sf::Text *backButton, *nextButton;
+        int Width, Height;
+    public:
+        InstructionsBox(sf::Font& font, int width, int height) : Width(width), Height(height) {
+            this->instructionText = new sf::Text(
+                "", font, 24
+            );
+
+            this->instructionText->setString(
+                "Instructions: How to play:\n\n"
+                "Please read carefully the instruction before play. This instruction will\n"
+                "tell you some information about gameplay and some notice.\n\n"
+                "1. Controller: \n\n"
+                "+) You need to use arrow keys (up, down, left, right) to move the snake go to eat the food.\n"
+                "The snake is red and the food is blue, and the food will appear randomly on the screen.\n\n"
+                "+) You cannot move to oppsite site. Example: When you are running to left side, you can't press\n"
+                "right key to move the snake to the right side. And when you are running to up side, you can't press\n"
+                "down key to move the snake to the down side.\n\n\n\n"
+                "2. Score calculating: \n\n"
+                "+) The score will start from 0, and after you gain a point, Scores will be calculated exponentially. \n"
+                "That is, the more food you eat, the higher your score will be due to this scoring method.\n\n"
+                "+) You always check the current score that you gained and the best score that you achieved on the top of \n"
+                "screen when you're playing game.\n\n"
+            );
+
+            this->instructionText->setCharacterSize(24);
+            this->instructionText->setFillColor(sf::Color::White);
+            this->instructionText->setPosition(50, 200);
+
+            // Background
+            this->background->setSize(
+                sf::Vector2f(
+                    this->Width - 100, this->Height - 200
+                )
+            );
+            this->background->setFillColor(sf::Color(0, 0, 0, 200));
+            this->background->setPosition(50, 150);
+        }
+
+        void draw(sf::RenderTarget& target, sf::RenderStates states) const override {
+            target.draw(* this->background, states);
+            target.draw(* this->instructionText, states);
+        }
+};
+
 class SnakeSenzia::Core::ProgramData {
     private:
         int windowWidth;
@@ -344,137 +555,6 @@ class SnakeSenzia::Core::FileSystem {
         }
 };
 
-class SnakeSenzia::Core::SoundPlayer : private SnakeSenzia::Core::FileSystem {
-    private:
-        std::string SoundFile;
-        sf::SoundBuffer Buffer;
-        sf::Sound SoundSFML;
-    public:
-        SoundPlayer(std::string _soundFile) : SoundFile(_soundFile) {    
-            sf::SoundBuffer buf;
-            this->Buffer = buf;
-
-            if (!isFileExists(GetResourcesDirectory() + this->SoundFile)) {
-                std::cout << "Sound cannot be loaded." << std::endl;
-                abort();
-            } else {
-                if (!this->Buffer.loadFromFile(GetResourcesDirectory() + this->SoundFile)) {
-                    std::cout << "Sound cannot be loaded." << std::endl;
-                    abort();
-                }
-            }
-        }
-
-        ~SoundPlayer() {}
-
-        void play() {
-            // Get audio source file
-            this->SoundSFML.setBuffer(this->Buffer);
-            this->SoundSFML.play();
-        }
-
-        void pause() {
-            this->SoundSFML.pause();
-        }
-
-        void stop() {
-            this->SoundSFML.stop();
-        }
-
-        void setPlayOffset(float secs) {
-            this->SoundSFML.setPlayingOffset(sf::seconds(secs));
-        }
-
-        sf::Time getPlayOffset() const {
-            return this->SoundSFML.getPlayingOffset();
-        }
-
-        void SetPitch(float pitch) {
-            this->SoundSFML.setPitch(pitch);
-        }
-
-        float GetPitch() const {
-            return this->SoundSFML.getPitch();
-        }
-
-        void SetLoop(bool isLoop) {
-            this->SoundSFML.setLoop(isLoop);
-        }
-
-        bool GetLoop() const {
-            return this->SoundSFML.getLoop();
-        }
-
-        const sf::SoundBuffer *GetBuffer() {
-            return this->SoundSFML.getBuffer();
-        }
-
-        const sf::SoundSource::Status GetStatus() const {
-            return this->SoundSFML.getStatus();
-        }
-
-        void resetBuf() {
-            this->SoundSFML.resetBuffer();
-        }
-
-        void setVolume(float volume) {
-            this->SoundSFML.setVolume(volume);
-        }
-
-        float getVolume() const {
-            return this->SoundSFML.getVolume();
-        }
-};
-
-class SnakeSenzia::Core::Font : private SnakeSenzia::Core::FileSystem {
-    private:
-        std::string fontFile;
-        sf::Font font;
-        bool loaded;
-    public:
-        Font(std::string FontFile) : fontFile(FontFile), loaded(false) {
-            if (!isFileExists(this->fontFile)) {
-                std::cout << "Font file doesn't exist: " << this->fontFile << std::endl;
-                return;
-            }
-
-            // Load font when the object is created
-            this->loaded = this->font.loadFromFile(this->fontFile);
-            if (!this->loaded) {
-                std::cout << "Failed to load font from file: " << this->fontFile << std::endl;
-            }
-        }
-
-        bool isLoaded() const {
-            return this->loaded;
-        }
-
-        sf::Font getFont() const {
-            if (this->loaded) {
-                return this->font;
-            }
-            // Return a default font or handle the situation as needed when the font is not loaded
-            // For example, you can return sf::Font() or throw an exception.
-            return sf::Font(); // Returning an empty font for simplicity, handle this better in your code
-        }
-
-        void loadFontFromMemory(const void *data, size_t size) {
-            this->font.loadFromMemory(data, size);
-        }
-
-        void setSmooth(bool smooth) {
-            this->font.setSmooth(smooth);
-        }
-
-        bool GetSmoothStatus() const {
-            return this->font.isSmooth();
-        }
-
-        void *getFont() {
-            return &(this->font);
-        }
-};
-
 class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
     private:
         int Width, Height;
@@ -490,6 +570,7 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
         std::vector<void (*)()> clickHandler;
         std::vector<void (*)()> customHandler;
         std::vector<void (*)()> keyboardPressHandler;
+        std::vector<void (*)()> screenSwitchHandler;
 
         void (* upHandle)();
         void (* downHandle)();
@@ -617,6 +698,22 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
             }
         }
 
+        void setSwitchScreenHandler(void (* switchHandler)()) {
+            this->screenSwitchHandler.push_back(switchHandler);
+        }
+
+        void runSwitchScreenHandler() {
+            for (int i = 0; i < this->screenSwitchHandler.size(); i++) {
+                this->screenSwitchHandler[i]();
+            }
+        }
+
+        void deleteAllSwitchScreenHandler() {
+            for (int i = 0; i < this->screenSwitchHandler.size(); i++) {
+                this->screenSwitchHandler.pop_back();
+            }
+        }
+
         void deleteAllCustomHandler() {
             for (int i = 0; i < this->customHandler.size(); i++) {
                 this->customHandler.pop_back();
@@ -671,6 +768,14 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
             }
         }
 
+        int getSizeX() {
+            return this->window->getSize().x;
+        }
+
+        int getSizeY() {
+            return this->window->getSize().y;
+        }
+
         void ShowWindow() {
             if (this->window != nullptr) {
                 while (this->window->isOpen()) {
@@ -709,6 +814,8 @@ class SnakeSenzia::Core::SnakeWindow : private SnakeSenzia::Core {
                     runAnimation();
                     // Run custom handler here
                     runCustomHandler();
+
+                    runSwitchScreenHandler();
 
                     this->window->display();
                 }
@@ -759,8 +866,6 @@ class GameHandler : private SnakeSenzia::Core::SnakeWindow {
 
 template <typename Object>
 class WindowHandler : public SnakeSenzia::Core::SnakeWindow, 
-                      public SnakeSenzia::Core::Font, 
-                      public SnakeSenzia::Core::SoundPlayer, 
                       public GameHandler<Object> {
     private:
         std::vector<Object *> ObjectParsed;
